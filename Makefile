@@ -85,5 +85,8 @@ allclean:
 
 # Testing
 
+test:
+	@echo "PT/PARMISAN has no standalone test yet"
+
 TESTDIR = run_test
 BLESS=NO
