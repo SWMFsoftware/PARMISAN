@@ -51,11 +51,11 @@ PARMISAN:
 NOMPI:
 	cd util/NOMPI/src; make LIB
 
-COMPONENT = SP
+COMPONENT = PT
 
 rundir:
-	mkdir -p ${RUNDIR}/SP 
-	cd ${RUNDIR}/SP; \
+		mkdir -p ${RUNDIR}/PT
+		cd ${RUNDIR}/PT; \
 		mkdir restartIN restartOUT IO2; \
 		ln -s ${SPDIR}/Param .
 	@(if [ "$(STANDALONE)" != "NO" ]; then \
