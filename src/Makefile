@@ -16,6 +16,7 @@ OBJECTS = \
 	ModReadMhData.o \
 	ModSize.o \
 	ModTime.o \
+	ModConst.o \
 	ModShock.o
 
 ModSize.f90: ModSize_orig.f90

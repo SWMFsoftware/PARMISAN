@@ -15,7 +15,7 @@ c this is an mpi version
 c
 
       use ModMpi
-
+      use PT_ModConst
       implicit none
       character*1 SPLIT
       character*4 tmp
@@ -23,7 +23,6 @@ c
       character*100 name1,name2,name3,name4,name5,name6,name7,name8,
      & name9,name10,name11,name12,name13
       real*8 r,rs,rinj,rs0,t,p,U,dUdr,K,dKdr
-      real*8 Rsun,AU,eV,keV,MeV,mp,fourpi
       real*8 E0,Rmin,K0,p0,dt,dlt,E
       real*8 E_bin(1000),t_bin(1000),w1(1000,1000),w2(1000,1000),
      & w3(1000,1000),w4(1000,1000),t_wall,Emax,Emin
@@ -42,7 +41,7 @@ c
       integer*4 mype,npe,mpierr,seed(33)
 
       common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Rsun,Mach,V_sw_mod
+     &     Mach,V_sw_mod
       common /max_sim_time/ tmax_data,tmin_data,Rmax_data
 
 c mpi initialization routines
@@ -54,14 +53,7 @@ c mpi initialization routines
       call random_number( xi )
 
 c constants (cgs units)
-      Rsun = 6.96d+10
-      AU = 1.496d+13
-      eV = 1.6022d-12
-      keV = 1000.d0*eV
-      MeV = 1.d+6*eV
-      mp = 1.6726d-24
       OneThird = 1.d0/3.d0
-      fourpi = 8.d0*dasin(1.d0)
 
 c definititions, simulation paramters (cgs units)
       Rmin = 1.1d0*Rsun
@@ -492,16 +484,15 @@ c finialize mpi routine
 
 c based on the appendix in Giacalone, 2015 (ApJ, vol. 799, 
 c     article id. 80, Equations C1-C4)
-  
+      use PT_ModConst, ONLY:Rsun
       implicit none
       real*8 r,t,U,dUdr
       real*8 U2p,U1p,r_shock_p,coshR2
       real*8 r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,Mach,
      &     V_sw_mod,Vsw
-      real*8 Rsun
       integer*4 ic
       common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Rsun,Mach,V_sw_mod
+     &     Mach,V_sw_mod
       data ic/0/
       save
 
@@ -535,14 +526,13 @@ c     article id. 80, Equations C1-C4)
       subroutine getK(r,t,p,K,dKdr)
 
 c assumed K ir proportional to r**2
-  
+      use PT_ModConst, ONLY:Rsun
       implicit none
       real*8 r,t,p,K,dKdr
       real*8 r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,Mach,
      &     V_sw_mod
-      real*8 Rsun
       common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Rsun,Mach,V_sw_mod
+     &     Mach,V_sw_mod
       save
 
       K = K0*((r/Rmin)**1.17)
@@ -569,18 +559,19 @@ c momentum dependence
 
       subroutine getShock(t)
       use PT_ModShock
+      use PT_ModConst, ONLY:Rsun
       implicit none
 
       real*8 t,r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt
       real*8 time_A(2000),Mach_A(2000),v_shock_A(2000),
-     &    th,rshRsun,M,vshkms,tmax_data,time1,time2,FF,Mach,Rsun,
+     &    th,rshRsun,M,vshkms,tmax_data,time1,time2,FF,Mach,
      &    Vswkms,x_sh_Rsun,y_sh_Rsun,z_sh_Rsun,shock_pos_rel_sun,
      &    V_sw_mod,tmin_data,ss,s_A(2000),Rmax_data
       integer*4 ic,i
       character*30 name
       character*120 path
       common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Rsun,Mach,V_sw_mod
+     &     Mach,V_sw_mod
       common /max_sim_time/ tmax_data,tmin_data,Rmax_data
       data ic/0/
       save
@@ -645,15 +636,16 @@ c interpolate
 
       subroutine getVsw(r,VwP)
       use PT_ModShock
+      use PT_ModConst, ONLY:Rsun
       implicit none
       real*8 r,VwP
       real*8 r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Rsun,Mach,V_sw_mod
+     &     Mach,V_sw_mod
       real*8 rs1,rs2,FF
       
       integer*4 i
       common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Rsun,Mach,V_sw_mod
+     &     Mach,V_sw_mod
 
       do 10 i=1,n
        if(r.lt.r_shock_A(i))goto 11
