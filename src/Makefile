@@ -15,7 +15,8 @@ OBJECTS = \
 	ModProc.o \
 	ModReadMhData.o \
 	ModSize.o \
-	ModTime.o
+	ModTime.o \
+	ModShock.o
 
 ModSize.f90: ModSize_orig.f90
 	cp -f ModSize_orig.f90 ModSize.f90
@@ -67,7 +68,25 @@ ${EXE}: ${OBJECTS_EXE}
 		ar -x ${LIBSHARE}
 	${LINK.f90} -o ${EXE} ${OBJECTS_EXE} Tmp_/*.o \
 		${LflagMpi}
-	rm -rf Tmp_ 
+	rm -rf Tmp_
+
+dsa_1dsp.o: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
+
+DSA:
+	make DSA.exe
+	@echo ' '
+	@echo Program DSA has been brought up to date.
+	@echo ' '
+
+DSA.exe: dsa_1dsp.o
+	rm -rf Tmp_; mkdir Tmp_
+	cd Tmp_; \
+		ar -x ../${MY_LIB}; \
+		ar -x ${LIBTIMING}; \
+		ar -x ${LIBSHARE}
+	${LINK.f90} -o DSA.exe dsa_1dsp.o Tmp_/*.o \
+		${LflagMpi}
+	rm -rf Tmp_
 
 clean: cleanfiles
 

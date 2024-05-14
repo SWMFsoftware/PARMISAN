@@ -14,7 +14,7 @@ c
 c this is an mpi version
 c
 
-      use mpi
+      use ModMpi
 
       implicit none
       character*1 SPLIT
@@ -150,7 +150,7 @@ c particle splitting
       E_split_lev(1)=E_split_lev_min
       E_split_lev(n_split_levels+1)=E_split_lev_max
       dEL_split=dlog(E_split_lev(n_split_levels+1)/E_split_lev(1))
-     &        /  dfloat(n_split_levels)
+     &        /  real(n_split_levels)
      
       name11 ='split_levels.dat'
       if(mype.eq.0)then
@@ -158,7 +158,7 @@ c particle splitting
        write(45,*)1,E_split_lev(1)/MeV
       end if
       do 10 lev=2,n_split_levels
-       E_split_lev(lev) = E_split_lev(1)*dexp(deL_split*(dfloat(lev)-1))
+       E_split_lev(lev) = E_split_lev(1)*dexp(deL_split*(real(lev)-1))
        if(mype.eq.0)write(45,*)lev,E_split_lev(lev)/MeV
  10   continue
       if(mype.eq.0)close(45)
@@ -385,7 +385,7 @@ c behind the shock
             itd1=min0(itdmx,max0(1,itd1))
             ntd=max0(ntd,itd)
             np(itd)=max0(np(itd),ip)
-            w=weight*(2.d0**(-dfloat(lev-1)))
+            w=weight*(2.d0**(-real(lev-1)))
             dN(itd,ip)=dN(itd,ip)+w*fpc*ftdc
             dN(itd,ip1)=dN(itd,ip1)+w*fp*ftdc
             dN(itd1,ip)=dN(itd1,ip)+w*fpc*ftd
@@ -453,15 +453,15 @@ c from this spectrum is n_ep (an input).
         do 38 itd=1,ntd
         write(14,*)itd,np(itd)
         do 37 ip=1,np(itd)
-c         p=p_diag_min*dexp( dpl_diag*dfloat(ip-1))
-         p=p_diag_min*dexp( dpl_diag*(dfloat(ip)-0.5) )
+c         p=p_diag_min*dexp( dpl_diag*real(ip-1))
+         p=p_diag_min*dexp( dpl_diag*(real(ip)-0.5) )
          E=(p**2)/(2.d0*mp)
          dp_diag=dpop_diag*p
          f=dN(itd,ip)/((p**2)*dp_diag)*den_ep*fac     ! distribution function
          j=f*(p**2)                               ! diff. intensity
          write(14,*)E/MeV,dmax1(1.d-20,j*MeV)
 c do this again, shifted by a bit to make it histogram style
-c         p=p_diag_min*dexp( dpl_diag*dfloat(ip))
+c         p=p_diag_min*dexp( dpl_diag*real(ip))
 c         E=(p**2)/(2.d0*mp)
 c         dp_diag=dpop_diag*p
 c         f=dN(itd,ip)/((p**2)*dp_diag)*den_ep*fac
@@ -568,21 +568,20 @@ c momentum dependence
       end
 
       subroutine getShock(t)
-
+      use PT_ModShock
       implicit none
 
       real*8 t,r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt
-      real*8 time_A(2000),r_shock_A(2000),Mach_A(2000),v_shock_A(2000),
+      real*8 time_A(2000),Mach_A(2000),v_shock_A(2000),
      &    th,rshRsun,M,vshkms,tmax_data,time1,time2,FF,Mach,Rsun,
      &    Vswkms,x_sh_Rsun,y_sh_Rsun,z_sh_Rsun,shock_pos_rel_sun,
-     &    V_sw_mod,V_sw_mod_A(2000),tmin_data,ss,s_A(2000),Rmax_data
-      integer*4 ic,i,n
+     &    V_sw_mod,tmin_data,ss,s_A(2000),Rmax_data
+      integer*4 ic,i
       character*30 name
       character*120 path
       common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
      &     Rsun,Mach,V_sw_mod
       common /max_sim_time/ tmax_data,tmin_data,Rmax_data
-      common /v_sw_array/ v_sw_mod_A,r_shock_A,n
       data ic/0/
       save
       name = 'PSP_para.dat'
@@ -645,17 +644,16 @@ c interpolate
 
 
       subroutine getVsw(r,VwP)
-
+      use PT_ModShock
       implicit none
       real*8 r,VwP
       real*8 r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
      &     Rsun,Mach,V_sw_mod
       real*8 rs1,rs2,FF
-      real*8 r_shock_A(2000),v_sw_mod_A(2000)
-      integer*4 i,n
+      
+      integer*4 i
       common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
      &     Rsun,Mach,V_sw_mod
-      common /v_sw_array/ v_sw_mod_A,r_shock_A,n
 
       do 10 i=1,n
        if(r.lt.r_shock_A(i))goto 11
