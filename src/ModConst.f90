@@ -2,8 +2,8 @@
   !  portions used with permission
   !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModConst
-  use ModConst, ONLY: cTwoPi, cAU, ceV, ckeV, cMeV, cProtonMass, &
-       RsunSi => Rsun ! SI
+  use ModNumConst, ONLY: cTwoPi
+  use ModConst, ONLY: cAU, ceV, ckeV, cMeV, cProtonMass, RsunSi => Rsun ! SI
   implicit none
   SAVE
   ! Constants in CGS
