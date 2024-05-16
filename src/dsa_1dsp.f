@@ -16,6 +16,7 @@ c
 
       use ModMpi
       use PT_ModConst
+      use PT_ModShockPara
       implicit none
       character*1 SPLIT
       character*4 tmp
@@ -23,32 +24,26 @@ c
       character*100 name1,name2,name3,name4,name5,name6,name7,name8,
      & name9,name10,name11,name12,name13
       real*8 r,rs,rinj,rs0,t,p,U,dUdr,K,dKdr
-      real*8 E0,Rmin,K0,p0,dt,dlt,E
+      real*8 E0,dt,E
       real*8 E_bin(1000),t_bin(1000),w1(1000,1000),w2(1000,1000),
      & w3(1000,1000),w4(1000,1000),t_wall,Emax,Emin
       real*8 rp,pp,divU,OneThird,xi,rH,pH,xrand
-      real*8 r_shock,v_shock,Vw,drSHOCK,Ls,s,Mach,V_sw_mod
       real*8 E_split_lev(100),E_split_lev_min,dEoE_split,dEl_split,
      &     E_split_levL,r_save_split(100),t_save_split(100),
      &     p_save_split(100),weight,ri,E_split_lev_max
       real*8 dN(500,1000),dpop_diag,dpl_diag,p_diag_min,dp_diag,
      &     ap,fp,fpc,dNs,den_ep,fac,f,j,w,dtd,rtd,ftd,ftdc
-      real*8 tmax,tmin,Rmax,tmax_data,tmin_data,Rmax_data,Rshmax
+      real*8 tmax,tmin,Rmax,Rshmax
       integer*4 time_current,time0,n_tbin,n_Ebin,i_tbin,i_Ebin,idt,idE
       integer*4 n,npart,n_split_levels,lev,isp,ispcnt,isp_max,
      &     lev_save_split(100)
       integer*4 ipmx,ip,ip1,pmx,np(500),itd,itd1,itdmx,ntd
-      integer*4 mype,npe,mpierr,seed(33)
-
-      common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Mach,V_sw_mod
-      common /max_sim_time/ tmax_data,tmin_data,Rmax_data
-
+      integer*4 mype,npe,mpierr,seed(630)
 c mpi initialization routines
       call mpi_init( mpierr )
       call mpi_comm_size( mpi_comm_world, npe, mpierr )
       call mpi_comm_rank( mpi_comm_world, mype, mpierr )
-      seed(33) = 123 + mype
+      seed(630) = 123 + mype
       call random_seed( put=seed )
       call random_number( xi )
 
@@ -67,7 +62,7 @@ c      Ls = 0.025*AU
       K0 = 6.d+19 * ((Rmin/AU)**1.17)   ! K0 is the value at r=Rmin at E0
       dlt = 0.71d0                   
       t_wall = 5*60
-      path =  '/pscratch/sd/x/xhchen/PT1D/Laborday/PSP/data/'
+      path =  '/Users/xhchen/My_work/Matlab/SEP_LaborDay/mpi/data/'
       name1 = 'Cross8_'
       name2 = 'Cross10_'
       name3 = 'Cross12_'
@@ -485,14 +480,11 @@ c finialize mpi routine
 c based on the appendix in Giacalone, 2015 (ApJ, vol. 799, 
 c     article id. 80, Equations C1-C4)
       use PT_ModConst, ONLY:Rsun
+      use PT_ModShockPara
       implicit none
-      real*8 r,t,U,dUdr
+      real*8 r,t,U,dUdr,Vsw
       real*8 U2p,U1p,r_shock_p,coshR2
-      real*8 r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,Mach,
-     &     V_sw_mod,Vsw
       integer*4 ic
-      common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Mach,V_sw_mod
       data ic/0/
       save
 
@@ -526,13 +518,10 @@ c     article id. 80, Equations C1-C4)
       subroutine getK(r,t,p,K,dKdr)
 
 c assumed K ir proportional to r**2
+      use PT_ModShockPara
       use PT_ModConst, ONLY:Rsun
       implicit none
       real*8 r,t,p,K,dKdr
-      real*8 r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,Mach,
-     &     V_sw_mod
-      common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Mach,V_sw_mod
       save
 
       K = K0*((r/Rmin)**1.17)
@@ -558,25 +547,22 @@ c momentum dependence
       end
 
       subroutine getShock(t)
-      use PT_ModShock
+      use PT_ModShockPara
+      use PT_ModSWPara
       use PT_ModConst, ONLY:Rsun
       implicit none
 
-      real*8 t,r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt
       real*8 time_A(2000),Mach_A(2000),v_shock_A(2000),
-     &    th,rshRsun,M,vshkms,tmax_data,time1,time2,FF,Mach,
+     &    th,rshRsun,M,vshkms,time1,time2,FF,t,
      &    Vswkms,x_sh_Rsun,y_sh_Rsun,z_sh_Rsun,shock_pos_rel_sun,
-     &    V_sw_mod,tmin_data,ss,s_A(2000),Rmax_data
+     &    ss,s_A(2000)
       integer*4 ic,i
       character*30 name
       character*120 path
-      common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Mach,V_sw_mod
-      common /max_sim_time/ tmax_data,tmin_data,Rmax_data
       data ic/0/
       save
       name = 'PSP_para.dat'
-      path = '/pscratch/sd/x/xhchen/PT1D/Laborday/PSP/'
+      path = '/Users/xhchen/My_work/Matlab/SEP_LaborDay/mpi/'
       if(ic.eq.0)then
        ic=1
        open(10,file=trim(path)//trim(name),
@@ -635,17 +621,13 @@ c interpolate
 
 
       subroutine getVsw(r,VwP)
-      use PT_ModShock
+      use PT_ModShockPara
+      use PT_ModSWPara
       use PT_ModConst, ONLY:Rsun
       implicit none
       real*8 r,VwP
-      real*8 r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Mach,V_sw_mod
       real*8 rs1,rs2,FF
-      
       integer*4 i
-      common /params/ r_shock,v_shock,Vw,drSHOCK,Ls,s,K0,Rmin,p0,dlt,
-     &     Mach,V_sw_mod
 
       do 10 i=1,n
        if(r.lt.r_shock_A(i))goto 11

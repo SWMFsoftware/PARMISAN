@@ -17,7 +17,8 @@ OBJECTS = \
 	ModSize.o \
 	ModTime.o \
 	ModConst.o \
-	ModShock.o
+	ModShockPara.o \
+	ModSWPara.o
 
 ModSize.f90: ModSize_orig.f90
 	cp -f ModSize_orig.f90 ModSize.f90
