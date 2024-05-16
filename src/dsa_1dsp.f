@@ -620,28 +620,3 @@ c interpolate
       end
 
 
-      subroutine getVsw(r,VwP)
-      use PT_ModShockPara
-      use PT_ModSWPara
-      use PT_ModConst, ONLY:Rsun
-      implicit none
-      real*8 r,VwP
-      real*8 rs1,rs2,FF
-      integer*4 i
-
-      do 10 i=1,n
-       if(r.lt.r_shock_A(i))goto 11
- 10   continue
- 11   if(i.eq.1)then
-       VwP=v_sw_mod_A(1)
-      elseif(i.eq.n)then
-       VwP=v_sw_mod_A(n)
-      else
-       rs1=r_shock_A(i-1)
-       rs2=r_shock_A(i)
-       FF = (r-rs1)/(rs2-rs1) 
-       VwP=V_sw_mod_A(i-1) + FF*(V_sw_mod_A(i)-V_sw_mod_A(i-1))     
-      end if
-
-      return
-      end 
