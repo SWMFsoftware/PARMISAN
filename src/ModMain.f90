@@ -146,9 +146,9 @@ contains
     ! use SP_ModTurbulence, ONLY: finalize_turbulence => finalize
 
     ! finalize the model
+    ! if(IsStandAlone)call stand_alone_final_restart
     character(len=*), parameter:: NameSub = 'finalize'
     !--------------------------------------------------------------------------
-    ! if(IsStandAlone)call stand_alone_final_restart
     call finalize_mhdata
   end subroutine finalize
   !============================================================================
@@ -206,9 +206,9 @@ contains
 
     use ModUtilities, ONLY: make_dir
     ! Make output directory
+
     character(len=*), parameter:: NameSub = 'check'
     !--------------------------------------------------------------------------
-
   end subroutine check
   !============================================================================
 end module PT_ModMain
