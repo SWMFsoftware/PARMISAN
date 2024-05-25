@@ -20,7 +20,6 @@ OBJECTS = \
 	ModShockPara.o \
 	ModSWPara.o \
 	get_U.o \
-	get_Shock.o \
 	get_Kappa.o
 
 ModSize.f90: ModSize_orig.f90

@@ -15,7 +15,8 @@ program dsa_1D_spherical
 
   use ModMpi
   use PT_ModConst
-  use PT_ModShockPara
+  use PT_ModShockPara, ONLY: getshock, tmin_data, rmax_data, Mach,s, &
+          v_shock,V_sw_mod, r_shock, rMin, Ls, DrShock, vW, p0, K0, Dlt
   use PT_ModProc
   implicit none
   character(len=4) :: tmp
