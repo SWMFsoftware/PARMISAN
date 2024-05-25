@@ -19,7 +19,6 @@ OBJECTS = \
 	ModConst.o \
 	ModShockPara.o \
 	ModSWPara.o \
-	get_SW.o \
 	get_U.o \
 	get_Shock.o \
 	get_Kappa.o
@@ -42,8 +41,7 @@ LIBTIMING = ${LIBDIR}/libTIMING.a
 
 
 DEPEND:
-	@perl ${SCRIPTDIR}/depend.pl ${SEARCH} \
-		${MODULES} ${OBJECTS}
+	@perl ${SCRIPTDIR}/depend.pl ${SEARCH} ${OBJECTS}
 
 LIB:	DEPEND
 	make ${MY_LIB}
