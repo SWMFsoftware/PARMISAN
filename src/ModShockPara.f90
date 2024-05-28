@@ -26,6 +26,7 @@ contains
     ! Loop and io variables
     integer :: i, io 
     !--------------------------------------------------------------------------
+    if(.not.DoReadShockFile)RETURN
     DoReadShockFile = .false.
     open(10,file=path//name,status='old')
     i=0
@@ -33,6 +34,7 @@ contains
        read(10,*,iostat=io) th,rshRsun,M,vshkms,Vswkms,ss
        if (io /= 0) then
           ! Why not close(10)???
+          close(10)
           EXIT
        end if
       shock_pos_rel_sun = rshRsun*Rsun
@@ -68,7 +70,6 @@ contains
     real :: time1, time2, FF
     integer :: i
     !--------------------------------------------------------------------------
-    if(DoReadShockFile)call read_shock
     ! interpolate
     do i = 1,n
        if(time_A(i) <= t) CYCLE
