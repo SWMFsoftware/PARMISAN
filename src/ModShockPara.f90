@@ -5,6 +5,7 @@ module PT_ModShockPara
   use PT_ModConst, ONLY: Rsun
   implicit none
   SAVE
+  real :: Rmin
   real :: K0
   ! Momentum at the injection energy
   real :: p0
