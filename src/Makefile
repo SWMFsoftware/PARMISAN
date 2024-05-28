@@ -16,6 +16,7 @@ OBJECTS = \
 	ModReadMhData.o \
 	ModSize.o \
 	ModTime.o \
+	ModPlot.o \
 	ModConst.o \
 	ModShockPara.o \
 	ModKappa.o
