@@ -5,19 +5,14 @@ module PT_ModShockPara
   use PT_ModConst, ONLY: Rsun
   implicit none
   SAVE
-  ! Minimal heliocentric distance?
-  real :: Rmin
-  ! What is this? Looks unused
-  ! real :: Vw = 
-  ! What is this?
   real :: K0
   ! Momentum at the injection energy
   real :: p0
   real :: r_shock, v_shock, s, Mach, V_sw_mod
   ! Maximum and minimum time in the data set
   real :: tmax_data, tmin_data
-  ! Maximum shock wave radius?
-  real :: Rmax_data
+  ! Maximum and minimum shock wave radius
+  real :: Rmax_data,Rmin_data
   logical :: DoReadShockFile = .true.
   real, PRIVATE :: time_A(2000), Mach_A(2000), v_shock_A(2000), s_A(2000), &
        v_sw_mod_A(2000), r_shock_A(2000)
@@ -28,8 +23,6 @@ contains
          path = '/Users/xhchen/My_work/Matlab/SEP_LaborDay/mpi/'
     ! Variables to read from the shock parameter file, before conversion
     real :: th, rshRsun, M, vshkms, Vswkms, shock_pos_rel_sun, ss
-    ! What is this? Not used
-    ! real :: x_sh_Rsun,y_sh_Rsun,z_sh_Rsun
     ! Loop and io variables
     integer :: i, io 
     !--------------------------------------------------------------------------
@@ -61,6 +54,7 @@ contains
     tmax_data = time_A(n)
     tmin_data = time_A(1)
     Rmax_data = r_shock_A(n)
+    Rmin_data = r_shock_A(1)
     do i = 2, n
       v_shock_A(i) = (r_shock_A(i) - r_shock_A(i-1))/ &
       (time_A(i) - time_A(i-1))
@@ -136,21 +130,10 @@ contains
     real, intent(in)  :: r,t
     real, intent(out) :: U, dUdr
     real :: U2p, U1p ,r_shock_p, coshR2, Vsw
-    ! What is this?
+    ! divergence free region in the downstream (optional)
     real, parameter ::  Ls = Rsun
     ! Shock wave width
     real, parameter :: drSHOCK = 4.d-5*Rsun
-
-    ! Why do you need this ?
-    ! integer :: ic
-    !--------------------------------------------------------------------------
-    ! Why do you need this?
-    ! data ic/0/
-    ! save
-    !
-    ! if(ic == 0)then
-    !   ic=1
-    ! end if
     
     call getShock( t )
     call getVsw( r, Vsw )
