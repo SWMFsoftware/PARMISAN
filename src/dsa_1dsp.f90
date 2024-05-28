@@ -174,35 +174,37 @@ program dsa_1D_spherical
           end if
           itime = itime+1
         end do DIFFUSIONLOOP
+
+        ! diagnostics go here, between the dashed lines.
+        !----------------BEGIN DIAGNOSTICS ---------------------
+        ! this bit bins in momentum those "particles" that are just
+        ! behind the shock
+        if(r(iParticle) > r_shock-Rsun .and. r(iParticle)<r_shock)then
+          ap=log(p(iParticle)/p_diag_min)/dpl_diag+0.50000000001
+          ip=ap
+          ip1=ip+1
+          fp=ap-ip
+          fpc=1.d0-fp
+          ip=min0(ipmx,max0(1,ip))
+          ip1=min0(ipmx,max0(1,ip1))
+          rtd=t_real/dtd + 0.5000000000001
+          itd=rtd
+          itd1=itd+1
+          ftd=rtd-itd
+          ftdc=1.d0-ftd
+          itd=min0(itdmx,max0(1,itd))
+          itd1=min0(itdmx,max0(1,itd1))
+          ntd=max0(ntd,itd)
+          np(itd)=max0(np(itd),ip)
+          w=1
+          dN(itd,ip)=dN(itd,ip)+w*fpc*ftdc
+          dN(itd,ip1)=dN(itd,ip1)+w*fp*ftdc
+          dN(itd1,ip)=dN(itd1,ip)+w*fpc*ftd
+          dN(itd1,ip1)=dN(itd1,ip1)+w*fp*ftd
+        end if
+        !-------------------END DIAGNOSTICS ----------------------------
+
       end do PARTICLELOOP
-      ! diagnostics go here, between the dashed lines.
-      !----------------BEGIN DIAGNOSTICS ---------------------
-      ! this bit bins in momentum those "particles" that are just
-      ! behind the shock
-      if(r > r_shock-Rsun .and. r<r_shock)then
-        ap=log(p/p_diag_min)/dpl_diag+0.50000000001
-        ip=ap
-        ip1=ip+1
-        fp=ap-ip
-        fpc=1.d0-fp
-        ip=min0(ipmx,max0(1,ip))
-        ip1=min0(ipmx,max0(1,ip1))
-        rtd=t_real/dtd + 0.5000000000001
-        itd=rtd
-        itd1=itd+1
-        ftd=rtd-itd
-        ftdc=1.d0-ftd
-        itd=min0(itdmx,max0(1,itd))
-        itd1=min0(itdmx,max0(1,itd1))
-        ntd=max0(ntd,itd)
-        np(itd)=max0(np(itd),ip)
-        w=1
-        dN(itd,ip)=dN(itd,ip)+w*fpc*ftdc
-        dN(itd,ip1)=dN(itd,ip1)+w*fp*ftdc
-        dN(itd1,ip)=dN(itd1,ip)+w*fpc*ftd
-        dN(itd1,ip1)=dN(itd1,ip1)+w*fp*ftd
-      end if
-      !-------------------END DIAGNOSTICS ----------------------------
 
       ! Save data with a wall-time
       time_current =  mpi_wtime()-time0
@@ -240,12 +242,12 @@ program dsa_1D_spherical
           write(14,*)itd,np(itd)
           do ip = 1,np(itd)
             !         p=p_diag_min*exp( dpl_diag*real(ip-1))
-            p=p_diag_min*exp( dpl_diag*(real(ip)-0.5) )
-            E=(p**2)/(2.d0*mp)
-            dp_diag=dpop_diag*p
+            pp=p_diag_min*exp( dpl_diag*(real(ip)-0.5) )
+            E=(pp**2)/(2.d0*mp)
+            dp_diag=dpop_diag*pp
             ! distribution function:
-            f=dN(itd,ip)/((p**2)*dp_diag)*den_ep*fac
-            j=f*(p**2)                               ! diff. intensity
+            f=dN(itd,ip)/((pp**2)*dp_diag)*den_ep*fac
+            j=f*(pp**2)                               ! diff. intensity
             write(14,*)E/MeV,dmax1(1.d-20,j*MeV)
             ! do this again, shifted by a bit to make it histogram style
             !         p=p_diag_min*exp( dpl_diag*real(ip))
