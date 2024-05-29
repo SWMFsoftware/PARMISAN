@@ -17,29 +17,28 @@ program dsa_1D_spherical
 
   use ModMpi
   use PT_ModConst
-  use PT_ModFluxes
+  use PT_ModPlot, ONLY : set_bins, write_shock_file, NamePath, name_sl, &
+       put_flux_contribution, set_diagnostics, put_diagnostic_contribution,&
+       write_diagnostics, save_fluxes
   use PT_ModShockPara, ONLY: getshock, getU, read_shock, tmin_data, &
-       rmax_data, Mach, s, v_shock, V_sw_mod, r_shock, rMin, p0, K0
-  use PT_ModKappa, ONLY: getK
+       rmax_data, Mach, s, v_shock, V_sw_mod, r_shock, rMin, p0
+  use PT_ModKappa, ONLY: getK, set_kappa
   use PT_ModProc
   implicit none
   logical ::  UseSplit = .true.
 
   ! real :: rinj What is this?
   real :: r, rs, rs0, t, p, U, dUdr, K, dKdr
-  real :: E0, dt, E
+  real :: E0, dt, E, w
   real :: rp,pp,divU,xi,rH,pH,rn
   real, parameter :: OneThird = 1.0/3.0
   real :: E_split_lev(100),E_split_lev_min,dEoE_split,dEl_split, &
        E_split_levL,r_save_split(100),t_save_split(100), &
        p_save_split(100),weight,ri,E_split_lev_max
-  real :: dN(500,1000),dpop_diag,dpl_diag,p_diag_min,dp_diag, &
-       ap,fp,fpc,dNs,den_ep,fac,f,j,w,dtd,rtd,ftd,ftdc
   real :: tmax,tmin,Rmax,Rshmax
-  integer :: time_current,time0,idt,idE
+  integer :: time_current,time0 ! ,idt,idE
   integer :: n,npart,n_split_levels,lev,iSplit,iSplitCounter,isp_max, &
        lev_save_split(100)
-  integer :: ipmx,ip,ip1,pmx,np(500),itd,itd1,itdmx,ntd
   integer :: mpierr,seed(630)
   ! mpi initialization routines
   !----------------------------------------------------------------------------
@@ -55,8 +54,6 @@ program dsa_1D_spherical
   dt = 0.01
   E0 = 50.d0*keV                ! source energy
   p0 = sqrt(2.d0*mp*E0)
-  K0 = 6.d+19 * ((Rmin/AU)**1.17)   ! K0 is the value at r=Rmin at E0
-
   ! particle splitting
   n_split_levels = 40            ! total number of energy levels
   E_split_lev_min = 1.d0*MeV    ! energy of first split level
@@ -77,43 +74,15 @@ program dsa_1D_spherical
   end do
   if(iProc==0)close(45)
   call read_shock
+  call set_kappa
   tmax=1.3*3600.d0
   tmin=tmin_data
-  t=tmin-dt
-  if(iProc==0) then
-     open(44,file=trim(NamePath)//trim(name_pt),status='unknown')
-  end if
-  do
-     t=t+dt
-     if(t > tmax) EXIT
-     call getShock(t)
-     r=r_shock
-     p=p0
-     call getK(r,t,p,K,dKdr)
-     if(iProc==0)write(44,'(6f18.7,2e15.5)')t/3600.0, Mach, s, &
-          v_shock/1.0d+5, V_sw_mod/1.0d+5, r_shock/Rsun, K, dKdr
-  end do
-  if(iProc==0)close(44)
+  if(iProc==0)call write_shock_file(tmin, tmax, dt)
   Rmax  = Rmax_data
   Rshmax= 16.d0*Rsun
-
   ! this stuff, between the dashes, is for the diagnostics used
-  !------diagnostic initializations -------
-  dpop_diag = 0.04
-  dpl_diag = log(1.d0+dpop_diag)
-  p_diag_min = sqrt(2.d0*E0*mp)
-  ipmx=1000
-  itdmx=500
-  dtd=60.d0
-  ntd=0
-  do itd = 1,itdmx
-     np(itd)=0
-     do ip = 1,ipmx
-        dN(itd,ip)=0.d0
-     end do
-  end do
-  den_ep = 2.4d-3
   !------------------------------------------
+  call set_diagnostics(E0)
 
   ! set up bin matrix
   call set_bins(tmin, tmax, Emin = keV, Emax = 1000.0*MeV)
@@ -180,46 +149,26 @@ program dsa_1D_spherical
            call random_number(rn)
            xi=-1.d0+2.d0*rn
            rH = rp + xi*sqrt(6.d0*K*dt) + U*dt + (dKdr+2.d0*K/rp)*dt
-           pH = pp*(1.d0-OneThird*divU*dt)
+           pH = pp*(1.d0 - OneThird*divU*dt)
 
            ! second step is the corrector step
            call getU(rH,t,U,dUdr)
            call getK(rH,t,pH,K,dKdr)
            divU=2.d0*U/rH+dUdr
            r = rp + xi*sqrt(6.d0*K*dt) + U*dt + (dKdr+2.d0*K/rH)*dt
-           p = pp*(1.d0-OneThird*divU*dt)
+           p = pp*(1.d0 - OneThird*divU*dt)
 
            ! particle energy (in ergs)
            E=(p**2)/(2.0*mp)
-
+           w=weight*(2.d0**(-real(lev-1)))
            rs0 = rs
            rs = r
            if (abs(rs-rs0) > 0.5*Rsun) then
               rs0 = rs
            end if
+           call put_flux_contribution(rs0, rs, t, E, w)
 
-           if (((rs-8.d0*Rsun)*(rs0-8.d0*Rsun))<0.0) then
-              idt = minloc(abs(TimeBin_I - t),DIM=1)
-              idE = minloc(abs(Ebin_I - E),DIM=1)
-              w1(idt,idE) = w1(idt,idE)+w
-           end if
-           if (((rs-10.d0*Rsun)*(rs0-10.d0*Rsun))<0.0) then
-              idt = minloc(abs(TimeBin_I - t),DIM=1)
-              idE = minloc(abs(Ebin_I - E),DIM=1)
-              w2(idt,idE) = w2(idt,idE)+w
-           end if
-           if (((rs-12.d0*Rsun)*(rs0-12.d0*Rsun))<0.0) then
-              idt = minloc(abs(TimeBin_I - t),DIM=1)
-              idE = minloc(abs(Ebin_I - E),DIM=1)
-              w3(idt,idE) = w3(idt,idE)+w
-           end if
-           if (((rs-14.d0*Rsun)*(rs0-14.d0*Rsun))<0.0) then
-              idt = minloc(abs(TimeBin_I - t),DIM=1)
-              idE = minloc(abs(Ebin_I - E),DIM=1)
-              w4(idt,idE) = w4(idt,idE)+w
-           end if
-
-           time_current =  mpi_wtime()-time0
+           time_current =  mpi_wtime() - time0
            if (time_current > (60))then
               call save_fluxes
               call mpi_finalize( mpierr )
@@ -235,29 +184,8 @@ program dsa_1D_spherical
            !----------------BEGIN DIAGNOSTICS ---------------------
            ! this bit bins in momentum those "particles" that are just
            ! behind the shock
-           if(r > r_shock-Rsun .and. r<r_shock)then
-              ap=log(p/p_diag_min)/dpl_diag+0.50000000001
-              ip=ap
-              ip1=ip+1
-              fp=ap-ip
-              fpc=1.d0-fp
-              ip=min0(ipmx,max0(1,ip))
-              ip1=min0(ipmx,max0(1,ip1))
-              rtd=t/dtd + 0.5000000000001
-              itd=rtd
-              itd1=itd+1
-              ftd=rtd-itd
-              ftdc=1.d0-ftd
-              itd=min0(itdmx,max0(1,itd))
-              itd1=min0(itdmx,max0(1,itd1))
-              ntd=max0(ntd,itd)
-              np(itd)=max0(np(itd),ip)
-              w=weight*(2.d0**(-real(lev-1)))
-              dN(itd,ip)=dN(itd,ip)+w*fpc*ftdc
-              dN(itd,ip1)=dN(itd,ip1)+w*fp*ftdc
-              dN(itd1,ip)=dN(itd1,ip)+w*fpc*ftd
-              dN(itd1,ip1)=dN(itd1,ip1)+w*fp*ftd
-           end if
+           if(r > r_shock-Rsun .and. r<r_shock)&
+                call put_diagnostic_contribution(t, p, w)
            !-------------------END DIAGNOSTICS ----------------------------
 
            ! particle splitting
@@ -281,43 +209,7 @@ program dsa_1D_spherical
      ! this is the differential intensity.  The units are 1/(cm^2 s sr MeV).
      ! the normalization is such that the density of energetic particles
      ! computed from this spectrum is n_ep (an input).
-     if(mod(n,1)==0)then
-        write( NameFile,'(a,i4.4,a)')NamePath//name_dist, iProc, '.dat'
-        open(14,file=trim(NameFile),status='unknown')
-        dNs=0.d0
-        do itd = 1,ntd
-           do ip = 1,np(itd)
-              dNs=dNs+dN(itd,ip)
-           end do
-        end do
-        if(dNs > 0.d0)then
-           fac=1.d0/(fourpi*dNs)
-        else
-           fac=0.d0
-        end if
-        if(dNs > 0.d0)write(14,*)fac,ntd
-        do itd = 1,ntd
-           write(14,*)itd,np(itd)
-           do ip = 1,np(itd)
-              !         p=p_diag_min*exp( dpl_diag*real(ip-1))
-              pp=p_diag_min*exp( dpl_diag*(real(ip)-0.5) )
-              E=(pp**2)/(2.d0*mp)
-              dp_diag=dpop_diag*pp
-              ! distribution function:
-              f=dN(itd,ip)/((pp**2)*dp_diag)*den_ep*fac
-              j=f*(pp**2)                               ! diff. intensity
-              write(14,*)E/MeV,dmax1(1.d-20,j*MeV)
-              ! do this again, shifted by a bit to make it histogram style
-              !         p=p_diag_min*exp( dpl_diag*real(ip))
-              !         E=(p**2)/(2.d0*mp)
-              !         dp_diag=dpop_diag*p
-              !         f=dN(itd,ip)/((p**2)*dp_diag)*den_ep*fac
-              !         j=f*(p**2)
-              !         write(14,*)E/MeV,dmax1(1.d-20,j*MeV)
-           end do
-        end do
-        close(14)
-     end if
+     if(mod(n,1)==0)call write_diagnostics
   end do ! particle loop
   ! finialize mpi routine
   call save_fluxes

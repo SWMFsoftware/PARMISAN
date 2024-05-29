@@ -6,7 +6,6 @@ module PT_ModShockPara
   implicit none
   SAVE
   real :: Rmin
-  real :: K0
   ! Momentum at the injection energy
   real :: p0
   real :: r_shock, v_shock, s, Mach, V_sw_mod
@@ -19,13 +18,14 @@ module PT_ModShockPara
        v_sw_mod_A(2000), r_shock_A(2000)
   integer, PRIVATE :: n
 contains
+  !============================================================================
   subroutine read_shock
     character(len=*), parameter :: name = 'PSP_para.dat', &
          path = '/Users/xhchen/My_work/Matlab/SEP_LaborDay/mpi/'
     ! Variables to read from the shock parameter file, before conversion
     real :: th, rshRsun, M, vshkms, Vswkms, shock_pos_rel_sun, ss
     ! Loop and io variables
-    integer :: i, io 
+    integer :: i, io
     !--------------------------------------------------------------------------
     if(.not.DoReadShockFile)RETURN
     DoReadShockFile = .false.
@@ -136,13 +136,14 @@ contains
     real, parameter ::  Ls = Rsun
     ! Shock wave width
     real, parameter :: drSHOCK = 4.d-5*Rsun
-    
+
+    !--------------------------------------------------------------------------
     call getShock( t )
     call getVsw( r, Vsw )
-    
+
     U2p = ((s - 1.0)*v_shock + Vsw)/s
     U1p = Vsw
-    
+
     r_shock_p = r_shock - 3.0*drSHOCK
     if(r > r_shock_p)then
        U = 0.50*(U1p + U2p) + 0.50*(U1p - U2p)*tanh((r - r_shock)/drSHOCK)
