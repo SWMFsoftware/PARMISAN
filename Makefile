@@ -54,10 +54,10 @@ NOMPI:
 COMPONENT = PT
 
 rundir:
-		mkdir -p ${RUNDIR}/PT
-		cd ${RUNDIR}/PT; \
+	mkdir -p ${RUNDIR}/PT
+	cd ${RUNDIR}/PT; \
 		mkdir restartIN restartOUT IO2; \
-		ln -s ${SPDIR}/Param .
+		ln -s ${PTDIR}/Param .
 	@(if [ "$(STANDALONE)" != "NO" ]; then \
 		touch ${DIR}/share/JobScripts/job._TMP_${MACHINE}; \
 		touch ${DIR}/share/JobScripts/_TMP_.${MACHINE}.pl; \
