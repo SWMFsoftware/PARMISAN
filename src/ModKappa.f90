@@ -16,14 +16,16 @@ contains
     K0 = 6.d+19 * ((Rmin/AU)**1.17)   ! K0 is the value at r=Rmin at E0
   end subroutine set_kappa
   !============================================================================
-  subroutine getK(r, t, p, Kappa, dKappaDr)
-    real, intent(in)  :: r, t, p
+  subroutine getK(r, Momentum, Kappa, dKappaDr)
+    real, intent(in)  :: r, Momentum
     real, intent(out) :: Kappa, dKappaDr
+    real :: MomentumFactor
     !--------------------------------------------------------------------------
     Kappa = K0*((r/Rmin)**1.170)
     dKappaDr = 1.170*Kappa/r
-    Kappa = Kappa*((p/p0)**(2.0*dlt))
-    dKappaDr=dKappaDr*((p/p0)**(2.0*dlt))
+    MomentumFactor = (Momentum/p0)**(2.0*dlt)
+    Kappa = Kappa*MomentumFactor
+    dKappaDr=dKappaDr*MomentumFactor
   end subroutine getK
   !============================================================================
 end module PT_ModKappa

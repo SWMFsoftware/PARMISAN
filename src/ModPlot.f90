@@ -48,7 +48,7 @@ contains
        if(Time > TimeMax) EXIT
        call getShock(Time)
        r=r_shock
-       call getK(r, Time, p0, Kappa, dKappaDr)
+       call getK(r, p0, Kappa, dKappaDr)
        write(44,'(6f18.7,2e15.5)')Time/3600.0, Mach, s, &
             v_shock/1.0d+5, V_sw_mod/1.0d+5, r_shock/Rsun, Kappa, dKappaDr
     end do
