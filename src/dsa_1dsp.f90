@@ -14,8 +14,9 @@ program dsa_1D_spherical
   ! this version assumes the source to have a 1/r^2 dependence
   !
   ! this is an mpi version
-
+  use ModKind
   use ModMpi
+  use ModReadParam, ONLY: read_file, read_init
   use PT_ModConst
   use PT_ModPlot, ONLY : set_bins, write_shock_file, NamePath, name_sl, &
        put_flux_contribution, set_diagnostics, put_diagnostic_contribution,&
@@ -25,6 +26,10 @@ program dsa_1D_spherical
   use PT_ModKappa, ONLY: getK, set_kappa
   use PT_ModProc
   implicit none
+
+  integer      :: iError
+  integer      :: iSession = 1
+  real(Real8_) :: CpuTimeStart, CpuTime
   logical ::  UseSplit = .true.
 
   ! real :: rinj What is this?
@@ -36,15 +41,27 @@ program dsa_1D_spherical
        E_split_levL,r_save_split(100),t_save_split(100), &
        p_save_split(100),weight,ri,E_split_lev_max
   real :: tmax,tmin,Rmax,Rshmax
-  integer :: time_current,time0 ! ,idt,idE
   integer :: n,npart,n_split_levels,lev,iSplit,iSplitCounter,isp_max, &
        lev_save_split(100)
-  integer :: iError,seed(630)
+  integer :: seed(630)
   ! mpi initialization routines
   !----------------------------------------------------------------------------
-  call mpi_init(iError)
-  call mpi_comm_size( mpi_comm_world, nProc, iError)
-  call mpi_comm_rank( mpi_comm_world, iProc, iError)
+  call MPI_INIT( iError )
+  ! Assign communicator
+  iComm = MPI_COMM_WORLD
+  call mpi_comm_rank( iComm, iProc, iError )
+  call mpi_comm_size( iComm, nProc, iError )
+
+  ! Initialize time which is used to check CPU time
+  CpuTimeStart = MPI_WTIME()
+
+  ! Read PARAM.in file. Provide default restart file for #RESTART
+  ! call read_file('PARAM.in',iComm)
+  ! call read_init('  ', iSessionIn=iSession)
+
+  if(iProc==0)&
+       write(*,*)'----- Starting Session ',iSession,' ------'
+
   seed(630) = 123 + iProc
   call random_seed( put=seed )
   call random_number( xi )
@@ -86,8 +103,6 @@ program dsa_1D_spherical
 
   ! set up bin matrix
   call set_bins(tmin, tmax, Emin = keV, Emax = 1000.0*MeV)
-
-  time0 = mpi_wtime()
 
   ! number of particles (unsplit, original particles = "mothers")
   npart = 1000000
@@ -168,8 +183,8 @@ program dsa_1D_spherical
            end if
            call put_flux_contribution(rs0, rs, t, E, w)
 
-           time_current =  mpi_wtime() - time0
-           if (time_current > (60))then
+           CpuTime =  mpi_wtime() - CpuTimeStart
+           if (CpuTime > (60))then
               call save_fluxes
               call mpi_finalize(iError)
               stop
