@@ -24,7 +24,10 @@ program dsa_1D_spherical
   use PT_ModShockPara, ONLY: getshock, getU, read_shock, tmin_data, &
        rmax_data, Mach, s, v_shock, V_sw_mod, r_shock, rMin, p0
   use PT_ModKappa, ONLY: getK, set_kappa
-  use PT_ModProc
+  use PT_ModParticle, ONLY: nParticleMax, init_particles,&
+       nSplitLev, eSplitLev_I
+  use PT_ModProc, ONLY: iProc, nProc, iComm
+
   implicit none
 
   integer      :: iError
@@ -37,13 +40,11 @@ program dsa_1D_spherical
   real :: E0, dt, E, w
   real :: rp,pp,divU,xi,rH,pH,rn
   real, parameter :: OneThird = 1.0/3.0
-  real :: E_split_lev(100),E_split_lev_min,dEoE_split,dEl_split, &
-       E_split_levL,r_save_split(100),t_save_split(100), &
-       p_save_split(100),weight,ri,E_split_lev_max
+  real :: r_save_split(100),t_save_split(100), &
+       p_save_split(100),weight,ri
   real :: tmax,tmin,Rmax,Rshmax
-  integer :: n,npart,n_split_levels,lev,iSplit,iSplitCounter,isp_max, &
+  integer :: n,lev,iSplit,iSplitCounter,isp_max, &
        lev_save_split(100)
-  integer :: seed(630)
   ! mpi initialization routines
   !----------------------------------------------------------------------------
   call MPI_INIT( iError )
@@ -62,34 +63,14 @@ program dsa_1D_spherical
   if(iProc==0)&
        write(*,*)'----- Starting Session ',iSession,' ------'
 
-  seed(630) = 123 + iProc
-  call random_seed( put=seed )
-  call random_number( xi )
-
   ! definititions, simulation paramters (cgs units)
   Rmin = 1.1d0*Rsun
   dt = 0.01
   E0 = 50.d0*keV                ! source energy
   p0 = sqrt(2.d0*mp*E0)
-  ! particle splitting
-  n_split_levels = 40            ! total number of energy levels
-  E_split_lev_min = 1.d0*MeV    ! energy of first split level
-  E_split_lev_max = 20000.d0*MeV  ! energy of last split level
-  isp_max=80             ! max number of split particles for a "mother"
-  E_split_lev(1)=E_split_lev_min
-  E_split_lev(n_split_levels+1)=E_split_lev_max
-  dEL_split=log(E_split_lev(n_split_levels+1)/E_split_lev(1)) &
-       /real(n_split_levels)
 
-  if(iProc==0)then
-     open(45,file=NamePath//name_sl,status='unknown')
-     write(45,*)1, E_split_lev(1)/MeV
-  end if
-  do lev = 2,n_split_levels
-     E_split_lev(lev) = E_split_lev(1)*exp(deL_split*(real(lev)-1))
-     if(iProc==0)write(45,*)lev,E_split_lev(lev)/MeV
-  end do
-  if(iProc==0)close(45)
+  isp_max=80             ! max number of split particles for a "mother"
+  call init_particles
   call read_shock
   call set_kappa
   tmax=1.3*3600.d0
@@ -104,11 +85,8 @@ program dsa_1D_spherical
   ! set up bin matrix
   call set_bins(tmin, tmax, Emin = keV, Emax = 1000.0*MeV)
 
-  ! number of particles (unsplit, original particles = "mothers")
-  npart = 1000000
-
   ! particle loop
-  do n = 1,npart
+  do n = 1, nParticleMax
      if(iProc==0.and.mod(n,100)==0)write(*,*)n
      iSplit=0
      SPLITLOOP:do
@@ -205,7 +183,7 @@ program dsa_1D_spherical
 
            ! particle splitting
            if(UseSplit)then
-              if(E > E_split_lev(lev).and.lev<n_split_levels &
+              if(E > eSplitLev_I(lev).and.lev<nSplitLev &
                    .and.iSplit <= isp_max)then
                  lev=lev+1
                  iSplit=iSplit+1
