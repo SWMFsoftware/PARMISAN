@@ -18,6 +18,7 @@ OBJECTS = \
 	ModTime.o \
 	ModPlot.o \
 	ModConst.o \
+	ModParticle.o \
 	ModShockPara.o \
 	ModKappa.o
 
