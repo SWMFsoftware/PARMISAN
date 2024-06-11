@@ -39,12 +39,12 @@ program dsa_1D_spherical
   integer :: time_current,time0 ! ,idt,idE
   integer :: n,npart,n_split_levels,lev,iSplit,iSplitCounter,isp_max, &
        lev_save_split(100)
-  integer :: mpierr,seed(630)
+  integer :: iError,seed(630)
   ! mpi initialization routines
   !----------------------------------------------------------------------------
-  call mpi_init( mpierr )
-  call mpi_comm_size( mpi_comm_world, nProc, mpierr )
-  call mpi_comm_rank( mpi_comm_world, iProc, mpierr )
+  call mpi_init(iError)
+  call mpi_comm_size( mpi_comm_world, nProc, iError)
+  call mpi_comm_rank( mpi_comm_world, iProc, iError)
   seed(630) = 123 + iProc
   call random_seed( put=seed )
   call random_number( xi )
@@ -144,7 +144,7 @@ program dsa_1D_spherical
            ! stochastic integration method
            ! first step is the prediction step
            call getU(rp,t,U,dUdr)
-           call getK(rp,t,pp,K,dKdr)
+           call getK(rp,pp,K,dKdr)
            divU=2.d0*U/rp+dUdr
            call random_number(rn)
            xi=-1.d0+2.d0*rn
@@ -153,7 +153,7 @@ program dsa_1D_spherical
 
            ! second step is the corrector step
            call getU(rH,t,U,dUdr)
-           call getK(rH,t,pH,K,dKdr)
+           call getK(rH,pH,K,dKdr)
            divU=2.d0*U/rH+dUdr
            r = rp + xi*sqrt(6.d0*K*dt) + U*dt + (dKdr+2.d0*K/rH)*dt
            p = pp*(1.d0 - OneThird*divU*dt)
@@ -171,7 +171,7 @@ program dsa_1D_spherical
            time_current =  mpi_wtime() - time0
            if (time_current > (60))then
               call save_fluxes
-              call mpi_finalize( mpierr )
+              call mpi_finalize(iError)
               stop
            end if
 
@@ -213,7 +213,7 @@ program dsa_1D_spherical
   end do ! particle loop
   ! finialize mpi routine
   call save_fluxes
-  call mpi_finalize( mpierr )
+  call mpi_finalize(iError)
 end program dsa_1D_spherical
 !==============================================================================
 
