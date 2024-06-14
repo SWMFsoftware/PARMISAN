@@ -20,8 +20,7 @@ module PT_ModShockPara
 contains
   !============================================================================
   subroutine read_shock
-    character(len=*), parameter :: name = 'PSP_para.dat', &
-         path = '/Users/xhchen/My_work/Matlab/SEP_LaborDay/mpi/'
+    character(len=*), parameter :: NameFile ='PT/Param/PSP_para.dat'
     ! Variables to read from the shock parameter file, before conversion
     real :: th, rshRsun, M, vshkms, Vswkms, shock_pos_rel_sun, ss
     ! Loop and io variables
@@ -29,7 +28,7 @@ contains
     !--------------------------------------------------------------------------
     if(.not.DoReadShockFile)RETURN
     DoReadShockFile = .false.
-    open(10,file=path//name,status='old')
+    open(10,file=NameFile,status='old')
     i=0
     do
        read(10,*,iostat=io) th,rshRsun,M,vshkms,Vswkms,ss
@@ -60,7 +59,7 @@ contains
     Rmin_data = r_shock_A(1)
     do i = 2, n
       v_shock_A(i) = (r_shock_A(i) - r_shock_A(i-1))/ &
-      (time_A(i) - time_A(i-1))
+           (time_A(i) - time_A(i-1))
     end do
     v_shock_A(1) = v_shock_A(2)
   end subroutine read_shock
