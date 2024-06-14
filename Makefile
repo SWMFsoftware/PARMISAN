@@ -51,6 +51,13 @@ PARMISAN:
 NOMPI:
 	cd util/NOMPI/src; make LIB
 
+DSA:
+	cd ${SHAREDIR}; ${MAKE} LIB
+	cd ${EMPIRICALCRDIR}; ${MAKE} LIB
+	cd ${TIMINGDIR}; ${MAKE} LIB
+	cd src; ${MAKE} LIB
+	cd src; ${MAKE} DSA
+
 COMPONENT = PT
 
 rundir:
@@ -67,6 +74,7 @@ rundir:
 		cp -f Param/PARAM.in.test ${RUNDIR}/PARAM.in; \
 		touch ${RUNDIR}/core; chmod 444 ${RUNDIR}/core; \
 		cd ${RUNDIR}; ln -s ${BINDIR}/${DEFAULT_EXE} .; \
+		ln -s ${BINDIR}/DSA.exe .; \
 	fi);
 
 clean:  install
@@ -90,3 +98,8 @@ test:
 
 TESTDIR = run_test
 BLESS=NO
+
+RUNDIRLOC = run
+
+rundirloc:
+	$(MAKE) rundir STANDALONE=YES PTDIR=`pwd` RUNDIR=${RUNDIRLOC}
