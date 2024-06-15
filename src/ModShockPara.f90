@@ -20,6 +20,7 @@ module PT_ModShockPara
 contains
   !============================================================================
   subroutine read_shock
+    use PT_ModProc, ONLY: iProc
     character(len=*), parameter :: NameFile ='PT/Param/PSP_para.dat'
     ! Variables to read from the shock parameter file, before conversion
     real :: th, rshRsun, M, vshkms, Vswkms, shock_pos_rel_sun, ss
@@ -57,6 +58,12 @@ contains
     tmin_data = time_A(1)
     Rmax_data = r_shock_A(n)
     Rmin_data = r_shock_A(1)
+    if(iProc==0)then
+       write(*,*)'Read ',n,' lines from the shock parameter file '//NameFile
+       write(*,'(a,2es13.6,a)')'tMinData, tMaxData= ', tmin_data, tmax_data,' s'
+       write(*,'(a,2es13.6,a)')'rMinData, rMaxData= ', &
+            rmin_data, rmax_data,' cm'
+    end if
     do i = 2, n
       v_shock_A(i) = (r_shock_A(i) - r_shock_A(i-1))/ &
            (time_A(i) - time_A(i-1))
