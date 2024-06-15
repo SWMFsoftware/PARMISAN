@@ -107,13 +107,13 @@ contains
   !============================================================================
   function stop_condition_true() result(IsStopCondition)
     use PT_ModMain, ONLY: nIterMax
-    use PT_ModTime, ONLY: SPTime
+    use PT_ModTime, ONLY: PTTime
     logical :: IsStopCondition
     !--------------------------------------------------------------------------
     IsStopCondition = .false.
 
     if(nIterMax >= 0  .and.iIter >=nIterMax) IsStopCondition = .true.
-    if( TimeMax >  0.0.and. SPTime >= TimeMax) IsStopCondition = .true.
+    if( TimeMax >  0.0.and. PTTime >= TimeMax) IsStopCondition = .true.
 
   end function stop_condition_true
   !============================================================================

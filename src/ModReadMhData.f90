@@ -8,7 +8,7 @@ module PT_ModReadMhData
   use PT_ModGrid,    ONLY: iblock_to_lon_lat, get_other_state_var,   &
        nMHData, nLine, Z_, Used_B,  &
        FootPoint_VB, nVertex_B, MHData_VIB, LagrID_
-  use PT_ModTime,    ONLY: SPTime, DataInputTime
+  use PT_ModTime,    ONLY: PTTime, DataInputTime
   use ModPlotFile,   ONLY: read_plot_file
   use ModUtilities,  ONLY: fix_dir_name, open_file, close_file, CON_stop
   use ModIoUnit,     ONLY: io_unit_new
@@ -99,7 +99,7 @@ contains
     ! read the first input file
     call read_mh_data(DoOffsetIn = .false.)
     call get_other_state_var
-    SPTime = DataInputTime
+    PTTime = DataInputTime
 
   end subroutine init
   !============================================================================

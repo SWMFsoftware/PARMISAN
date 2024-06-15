@@ -9,9 +9,9 @@ module PT_ModTime
   implicit none
 
   SAVE
-  ! Iteration and time in SP
+  ! Iteration and time in PT
   integer      :: iIter   = 0
-  real         :: SPTime  = 0.0
+  real         :: PTTime  = 0.0
   ! Time of the last data output
   real         :: DataInputTime = 0.0
   logical      :: IsSteadyState = .false.
@@ -79,9 +79,9 @@ contains
        case('#NSTEP')
           call read_var('nStep',iIter)
        case('#TIMESIMULATION')
-          call read_var('SPTime',SPTime)
+          call read_var('PTTime',PTTime)
           ! The last time input occurred the same time
-          DataInputTime = SPTime
+          DataInputTime = PTTime
        case("#STARTTIME", "#SETREALTIME")
           call read_var('iYear'  ,iStartTime_I(1))
           call read_var('iMonth' ,iStartTime_I(2))
