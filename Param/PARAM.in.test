@@ -1,2 +1,7 @@
-#DESCRIPTION
-This is the test file for PARMISAN
+#ECHO
+T			DoEcho
+
+#CPUTIMEMAX
+60.0			CpuTimeMax
+
+#END
