@@ -6,7 +6,7 @@ module PT_ModPlot
   use PT_ModProc, ONLY : iProc
   implicit none
   SAVE
-  character(len=*), parameter ::  NamePath = 'PT/IO2'
+  character(len=*), parameter ::  NamePath = 'PT/IO2/'
   character(len=*), parameter :: file1 = 'Cross8_'
   character(len=*), parameter :: file2 = 'Cross10_'
   character(len=*), parameter :: file3 = 'Cross12_'
