@@ -75,19 +75,21 @@ ${EXE}: ${OBJECTS_EXE}
 
 dsa_1dsp.o: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
 
+DSA_EXE = ${BINDIR}/DSA.exe
+
 DSA:
-	make DSA.exe
+	make ${DSA_EXE}
 	@echo ' '
 	@echo Program DSA has been brought up to date.
 	@echo ' '
 
-DSA.exe: dsa_1dsp.o
+${DSA_EXE}: dsa_1dsp.o
 	rm -rf Tmp_; mkdir Tmp_
 	cd Tmp_; \
 		ar -x ../${MY_LIB}; \
 		ar -x ${LIBTIMING}; \
 		ar -x ${LIBSHARE}
-	${LINK.f90} -o DSA.exe dsa_1dsp.o Tmp_/*.o \
+	${LINK.f90} -o ${DSA_EXE} dsa_1dsp.o Tmp_/*.o \
 		${LflagMpi}
 	rm -rf Tmp_
 
