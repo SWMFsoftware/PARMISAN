@@ -41,7 +41,7 @@ contains
     use PT_ModReadMHData,    ONLY: read_param_mhdata     => read_param
     use PT_ModTime,          ONLY: read_param_time       => read_param
 
-    ! Read input parameters for SP component
+    ! Read input parameters for PT component
     use ModReadParam, ONLY: &
          read_var, read_line, read_command, i_session_read, read_echo_set
 
@@ -143,7 +143,7 @@ contains
   !============================================================================
   subroutine finalize
     use PT_ModReadMhData, ONLY: finalize_mhdata    => finalize
-    ! use SP_ModTurbulence, ONLY: finalize_turbulence => finalize
+    ! use PT_ModTurbulence, ONLY: finalize_turbulence => finalize
 
     ! finalize the model
     ! if(IsStandAlone)call stand_alone_final_restart
@@ -157,7 +157,7 @@ contains
     use PT_ModGrid,          ONLY: get_other_state_var, copy_old_state,  &
          get_shock_location
     use PT_ModReadMhData,    ONLY: read_mh_data
-    use PT_ModTime,          ONLY: SPTime, DataInputTime, iIter, IsSteadyState
+    use PT_ModTime,          ONLY: PTTime, DataInputTime, iIter, IsSteadyState
     ! advance the solution in time
     real, intent(in)   :: TimeLimit
     logical, save :: IsFirstCall = .true.
@@ -187,15 +187,15 @@ contains
        ! magnitude of magnetic field and velocity etc. Smooth if needed.
        call get_other_state_var
        ! if no new background data loaded, don't advance in time
-       if(DataInputTime <= SPTime) RETURN
+       if(DataInputTime <= PTTime) RETURN
        if(DoTraceShock) call get_shock_location
        ! run the model
        ! if(DoRun) call advance(min(DataInputTime, TimeLimit))
     end if
     ! update time & iteration counters
     iIter = iIter + 1
-    Dt = min(DataInputTime, TimeLimit) - SPTime
-    SPTime = SPTime + Dt
+    Dt = min(DataInputTime, TimeLimit) - PTTime
+    PTTime = PTTime + Dt
     ! call save_plot_all
 
     ! save restart if needed
