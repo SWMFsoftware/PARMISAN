@@ -64,8 +64,6 @@ program dsa_1D_spherical
   call MPI_COMM_RANK( iComm, iProc, iError )
   call MPI_COMM_SIZE( iComm, nProc, iError )
 
-  ! Initialize time which is used to check CPU time
-  CpuTimeStart = MPI_WTIME()
   ! Mark the run as a stand alone
   IsStandAlone = .true.
   ! Read PARAM.in file. Provide default restart file for #RESTART
@@ -111,7 +109,8 @@ program dsa_1D_spherical
         ! set up bin matrix
         call set_bins(tmin, tmax, Emin = keV, Emax = 1000.0*MeV)
      end if
-
+     ! Initialize time which is used to check CPU time
+     CpuTimeStart = MPI_WTIME()
      ! particle loop
      do n = 1, nParticleMax
         if(iProc==0.and.mod(n,100)==0)write(*,*)n
