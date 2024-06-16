@@ -37,11 +37,10 @@ program dsa_1D_spherical
   use PT_ModKappa, ONLY: getK, set_kappa
   use PT_ModParticle, ONLY: nParticleMax, init_particles,&
        nSplitLev, eSplitLev_I
-  use PT_ModProc, ONLY: iProc, nProc, iComm
+  use PT_ModProc, ONLY: iProc, nProc, iComm, iError
 
   implicit none
 
-  integer      :: iError
   integer      :: iSession = 1
   real(Real8_) :: CpuTimeStart, CpuTime
   logical      :: IsFirstSession = .true.
@@ -192,7 +191,7 @@ program dsa_1D_spherical
               CpuTime =  mpi_wtime() - CpuTimeStart
               if (CpuTime > CpuTimeMax)then
                  call save_fluxes
-                 call mpi_finalize(iError)
+                 call MPI_finalize(iError)
                  stop
               end if
 
@@ -240,7 +239,7 @@ program dsa_1D_spherical
   end do SESSIONLOOP
   ! finialize mpi routine
   call save_fluxes
-  call mpi_finalize(iError)
+  call MPI_finalize(iError)
 end program dsa_1D_spherical
 !==============================================================================
 
