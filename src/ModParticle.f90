@@ -4,7 +4,7 @@
 module PT_ModParticle
   use PT_ModConst
   implicit none
-  PRIVATE !Except
+  PRIVATE ! Except
   integer, public :: nParticle = 0, nParticleMax = 1000000
   ! Particle arrays:
   ! 1. Named indexes:
@@ -27,6 +27,7 @@ module PT_ModParticle
   real :: eSplitLevelMax = 20000.d0*MeV  ! energy of last split level
   real, public :: eSplitLev_I(100)
 contains
+  !============================================================================
   subroutine init_particles
     use PT_ModPlot, ONLY: NamePath, name_sl
     use PT_ModProc, ONLY: iProc
@@ -64,6 +65,7 @@ contains
   !============================================================================
   subroutine complete_particle_loop
 
+    !--------------------------------------------------------------------------
     if(nParticle==0)then
        nSplitParticle = 0; nUsedParticle = 0
        RETURN
