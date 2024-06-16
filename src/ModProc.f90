@@ -7,8 +7,9 @@ module PT_ModProc
 
   ! MPI information
   !----------------------------------------------------------------------------
-  integer:: iComm = -1
-  integer:: iProc = -1
-  integer:: nProc = -1
+  integer :: iComm = -1
+  integer :: iProc = -1
+  integer :: nProc = -1
+  integer :: iError = -1
 end module PT_ModProc
 !==============================================================================
