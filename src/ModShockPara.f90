@@ -62,7 +62,7 @@ contains
        write(*,*)'Read ',n,' lines from the shock parameter file '//NameFile
        write(*,'(a,2es13.6,a)')'tMinData, tMaxData= ', tmin_data, tmax_data,' s'
        write(*,'(a,2es13.6,a)')'rMinData, rMaxData= ', &
-            rmin_data, rmax_data,' cm'
+            rmin_data/Rsun, rmax_data/Rsun,' Rs'
     end if
     do i = 2, n
       v_shock_A(i) = (r_shock_A(i) - r_shock_A(i-1))/ &
