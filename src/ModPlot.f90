@@ -3,26 +3,24 @@
   !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModPlot
   use PT_ModConst
-  use PT_ModProc, ONLY : iProc
+  use PT_ModProc, ONLY : iProc, iComm, iError
   implicit none
   SAVE
   character(len=*), parameter ::  NamePath = 'PT/IO2/'
-  character(len=*), parameter :: file1 = 'Cross8_'
-  character(len=*), parameter :: file2 = 'Cross10_'
-  character(len=*), parameter :: file3 = 'Cross12_'
-  character(len=*), parameter :: file4 = 'Cross14_'
   character(len=*), parameter :: name_sl ='split_levels.dat'
   character(len=*), parameter :: name_pt ='prms_vs_t.dat'
   character(len=*), parameter :: Time_bin ='t_bin.dat'
   character(len=*), parameter :: Energy_bin ='E_bin.dat'
   character(len=*), parameter :: name_dist = 'dist'
   character(len=100)          :: NameFile
-  integer, parameter :: nEbin = 1000, nTimeBin = 1000
-  ! Arrays for storing the fluxes at the face:
-  real :: w1(nTimeBin, nEbin), w2(nTimeBin, nEbin), &
-       w3(nTimeBin, nEbin), w4(nTimeBin, nEbin)
+  integer :: nTimeBin = 1000, nEbin = 1000, nPlotFile = 4
+  ! Array for storing the fluxes at several spherical surfaces:
+  real, allocatable :: W_III(:,:,:)
+  ! Radii of the said surfaces:
+  real, allocatable :: rPlot_I(:)
+  character(LEN=:), allocatable, dimension(:) :: NamePlotFile_I
   ! Bins
-  real :: Ebin_I(nEbin),TimeBin_I(nTimeBin)
+  real, allocatable :: Ebin_I(:),TimeBin_I(:)
   ! Diagnostics:
   integer, parameter :: ipmx=1000, itdmx=500
   integer :: np(itdmx)
@@ -31,6 +29,34 @@ module PT_ModPlot
   real :: dpop_diag, dpl_diag, p_diag_min, dp_diag, dtd, den_ep
   integer :: ntd
 contains
+  !============================================================================
+  subroutine read_param(NameCommand)
+
+    use ModReadParam, ONLY: read_var
+    use ModUtilities, ONLY: CON_stop
+
+    character(len=*), intent(in):: NameCommand ! From PARAM.in
+    ! Loop variable
+    integer :: iPlot
+    character(len=*), parameter:: NameSub = 'read_param'
+    !--------------------------------------------------------------------------
+    select case(NameCommand)
+    case('#PLOT')
+       call read_var('nTimeBin' ,nTimeBin )
+       call read_var('nEbin'    ,nEbin    )
+       call read_var('nPlotFile',nPlotFile)
+       allocate(rPlot_I(nPlotFile))
+       allocate(character(LEN=13) :: NamePlotFile_I(nPlotFile))
+       do iPlot = 1, nPlotFile
+          call read_var('NamePlotFile_I(:)', NamePlotFile_I(iPlot))
+          call read_var('rPlot_I(:)'       , rPlot_I(iPlot))
+       end do
+       ! Convert to CGS
+       rPlot_I = rPlot_I*Rsun
+    case default
+       call CON_stop(NameSub//' Unknown command '//NameCommand)
+    end select
+  end subroutine read_param
   !============================================================================
   subroutine write_shock_file(TimeMin, TimeMax, dTime)
 
@@ -58,12 +84,22 @@ contains
 
     real, intent(in) :: TimeMin, TimeMax, Emin, Emax
     integer :: iBin
+
     !--------------------------------------------------------------------------
-    w1 = 0.0; w2 = 0.0; w3 = 0.0; w4 = 0.0
+    if(.not.allocated(rPlot_I))then
+       nPlotFile = 4
+       allocate(rPlot_I(nPlotFile))
+       rPlot_I = [8.0, 10.0, 12.0, 14.0]*Rsun
+       allocate(character(LEN=13) :: NamePlotFile_I(nPlotFile))
+       NamePlotFile_I = ['Cross8.dat   ', 'Cross10.dat  ',&
+            'Cross12.dat  ', 'Cross14.dat  ']
+    end if
+    allocate(W_III(nTimeBin, nEbin, nPlotFile)); W_III = 0.0
+    allocate(TimeBin_I(nTimeBin))
     do iBin = 1, nTimeBin
        TimeBin_I(iBin) = TimeMin + (TimeMax - TimeMin)*(iBin - 1)/nTimeBin
     end do
-
+    allocate(Ebin_I(nEbin))
     do iBin = 1, nEbin
        Ebin_I(iBin) = exp(log(Emin)+(log(Emax)-log(Emin)) &
             /nEbin*(iBin-1) )
@@ -72,9 +108,9 @@ contains
        open(801,file=NamePath//Energy_bin,status='unknown')
        write(801,'(1000e15.6)')Ebin_I/keV
        close(801)
-       open(802,file=NamePath//Time_bin,status='unknown')
-       write(802,'(1000e15.6)')TimeBin_I
-       close(802)
+       open(801,file=NamePath//Time_bin,status='unknown')
+       write(801,'(1000e15.6)')TimeBin_I
+       close(801)
     end if
   end subroutine set_bins
   !============================================================================
@@ -84,57 +120,37 @@ contains
     ! Time and energy, to determine the bin to put the contribution:
     real, intent(in) :: Time, Energy
     real, intent(in) :: Contribution
+    ! Misc:
+    logical :: IsCrossed_I(nPlotFile)
     ! Pixel numbers:
-    integer :: idt, ide
+    integer :: iDt, iDe
     !--------------------------------------------------------------------------
-
-    if (((rEnd - 8.d0*Rsun)*(rStart - 8.d0*Rsun))<0.0) then
-       idt = minloc(abs(TimeBin_I - Time),DIM=1)
-       idE = minloc(abs(Ebin_I - Energy),DIM=1)
-       w1(idt,idE) = w1(idt,idE) + Contribution
-    end if
-    if (((rEnd - 10.d0*Rsun)*(rStart - 10.d0*Rsun))<0.0) then
-       idt = minloc(abs(TimeBin_I - Time),DIM=1)
-       idE = minloc(abs(Ebin_I - Energy),DIM=1)
-       w2(idt,idE) = w2(idt,idE) + Contribution
-    end if
-    if (((rEnd - 12.d0*Rsun)*(rStart - 12.d0*Rsun))<0.0) then
-       idt = minloc(abs(TimeBin_I - Time),DIM=1)
-       idE = minloc(abs(Ebin_I - Energy),DIM=1)
-       w3(idt,idE) = w3(idt,idE) + Contribution
-    end if
-    if (((rEnd - 14.d0*Rsun)*(rStart - 14.d0*Rsun))<0.0) then
-       idt = minloc(abs(TimeBin_I - Time),DIM=1)
-       idE = minloc(abs(Ebin_I - Energy),DIM=1)
-       w4(idt,idE) = w4(idt,idE) + Contribution
-    end if
+    IsCrossed_I = (rEnd - rPlot_I)*(rStart - rPlot_I) < 0.0
+    if(.not.any(IsCrossed_I))RETURN
+    idt = minloc(abs(TimeBin_I - Time), DIM=1)
+    idE = minloc(abs(Ebin_I - Energy),  DIM=1)
+    where(IsCrossed_I)&
+         W_III(iDt,iDe,:) = W_III(iDt,iDe,:) + Contribution
   end subroutine put_flux_contribution
   !============================================================================
   subroutine save_fluxes
 
-    integer :: iBin
-    !--------------------------------------------------------------------------
+    use ModMpi, ONLY: MPI_reduce_real_array, MPI_SUM
+    integer :: iBin, iPlot
 
     ! Save fluxes stored at different surfaces
-    write(NameFile,'(a,i4.4,a)')NamePath//file1, iProc, '.dat'
-    open(901,file=trim(NameFile),status='unknown',action="READWRITE")
-    write(NameFile,'(a,i4.4,a)')NamePath//file2, iProc, '.dat'
-    open(902,file=trim(NameFile),status='unknown',action="READWRITE")
-    write(NameFile,'(a,i4.4,a)')NamePath//file3, iProc, '.dat'
-    open(903,file=trim(NameFile),status='unknown',action="READWRITE")
-    write(NameFile,'(a,i4.4,a)')NamePath//file4, iProc, '.dat'
-    open(904,file=trim(NameFile),status='unknown',action="READWRITE")
-
-    do iBin = 1, nTimeBin
-       write(901,'(1000e15.6)')w1(iBin,:)
-       write(902,'(1000e15.6)')w2(iBin,:)
-       write(903,'(1000e15.6)')w3(iBin,:)
-       write(904,'(1000e15.6)')w4(iBin,:)
+    !--------------------------------------------------------------------------
+    call MPI_reduce_real_array(W_III, nTimeBin*nEbin*nPlotFile, MPI_SUM, 0,&
+         iComm, iError)
+    if(iProc/=0)RETURN
+    do iPlot = 1, nPlotFile
+       open(901,file=NamePath//trim(NamePlotFile_I(iPlot)),&
+            status='unknown',action="READWRITE")
+       do iBin = 1, nTimeBin
+          write(901,'(1000e15.6)')W_III(iBin,:,iPlot)
+       end do
+       close(901)
     end do
-    close(901)
-    close(902)
-    close(903)
-    close(904)
   end subroutine save_fluxes
   !============================================================================
   subroutine set_diagnostics(E0)

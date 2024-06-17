@@ -40,7 +40,7 @@ contains
     use PT_ModOriginPoints,  ONLY: read_param_origin     => read_param
     use PT_ModReadMHData,    ONLY: read_param_mhdata     => read_param
     use PT_ModTime,          ONLY: read_param_time       => read_param
-
+    use PT_ModPlot,          ONLY: read_param_plot       => read_param
     ! Read input parameters for PT component
     use ModReadParam, ONLY: &
          read_var, read_line, read_command, i_session_read, read_echo_set
@@ -110,6 +110,8 @@ contains
        case("#TIMEACCURATE")
           call check_stand_alone
           call read_param_time(NameCommand)
+       case("#PLOT")
+          call read_param_plot(NameCommand)
        case default
           call CON_stop(NameSub//': Unknown command '//NameCommand)
        end select

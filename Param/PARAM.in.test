@@ -4,4 +4,18 @@ T			DoEcho
 #CPUTIMEMAX
 60.0			CpuTimeMax
 
+#PLOT
+24			nTimeBin
+100			nEbin
+4			nPlotFile
+Cross_1.2.dat		NamePlotFile_I(:)
+1.2			rPlot_I(:)
+Cross_1.4.dat		NamePlotFile_I(:)
+1.4			rPlot_I(:)
+Cross_1.6.dat		NamePlotFile_I(:)
+1.6			rPlot_I(:)
+Cross_1.8.dat		NamePlotFile_I(:)
+1.8			rPlot_I(:)
+
+
 #END
