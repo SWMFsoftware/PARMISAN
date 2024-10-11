@@ -102,4 +102,5 @@ BLESS=NO
 RUNDIRLOC = run
 
 rundirloc:
+	rm -rf ${RUNDIRLOC}
 	$(MAKE) rundir STANDALONE=YES PTDIR=`pwd` RUNDIR=${RUNDIRLOC}
