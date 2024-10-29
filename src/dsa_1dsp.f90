@@ -38,6 +38,7 @@ program dsa_1D_spherical
   use PT_ModParticle, ONLY: nParticleMax, init_particles,&
        nSplitLev, eSplitLev_I
   use PT_ModProc, ONLY: iProc, nProc, iComm, iError
+  use PT_ModSolver, ONLY: predictor_corrector, rk2_sde
 
   implicit none
 
@@ -153,29 +154,15 @@ program dsa_1D_spherical
 
               ! current shock location
               !         r_shock=Rmin+v_shock*t
-              call getShock(t)
+
+              ! call getShock(t) ! do we need this here? getU calls this immediately inside both solvers
 
               ! save particle position
               rp=r
               pp=p
 
-              ! advance to the next position and momentum with
-              ! stochastic integration method
-              ! first step is the prediction step
-              call getU(rp,t,U,dUdr)
-              call getK(rp,pp,K,dKdr)
-              divU=2.d0*U/rp+dUdr
-              call random_number(rn)
-              xi=-1.d0+2.d0*rn
-              rH = rp + xi*sqrt(6.d0*K*dt) + U*dt + (dKdr+2.d0*K/rp)*dt
-              pH = pp*(1.d0 - OneThird*divU*dt)
-
-              ! second step is the corrector step
-              call getU(rH,t,U,dUdr)
-              call getK(rH,pH,K,dKdr)
-              divU=2.d0*U/rH+dUdr
-              r = rp + xi*sqrt(6.d0*K*dt) + U*dt + (dKdr+2.d0*K/rH)*dt
-              p = pp*(1.d0 - OneThird*divU*dt)
+             ! call predictor_corrector(rp, pp, t, dt, r, p)
+              call rk2_sde(rp, pp, t, dt, r, p)
 
               ! particle energy (in ergs)
               E=(p**2)/(2.0*mp)

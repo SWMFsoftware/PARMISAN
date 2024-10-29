@@ -20,7 +20,8 @@ OBJECTS = \
 	ModConst.o \
 	ModParticle.o \
 	ModShockPara.o \
-	ModKappa.o
+	ModKappa.o \
+	ModSolver.o
 
 ModSize.f90: ModSize_orig.f90
 	cp -f ModSize_orig.f90 ModSize.f90
