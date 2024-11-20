@@ -89,7 +89,6 @@ distclean:
 allclean:
 	cd src; $(MAKE) distclean
 	cd srcInterface; $(MAKE) distclean
-	cd Doc/Tex; $(MAKE) cleanpdf
 
 # Testing
 
