@@ -26,8 +26,6 @@ if (-f $config or -f "../../$config"){
     `$GITCLONE $GITDIR/share.git; $GITCLONE $GITDIR/util.git`;
 }
 
-
-
 if(-f $config){
     require $config;
 }else{
@@ -60,8 +58,8 @@ my $nP;
 &get_settings;
 
 foreach (@Arguments){
-    if(/^-s$/)                {$Show=1;                        next};
-    if(/^-g$/)                {$ShowGridSize=1;                next};
+    if(/^-s$/)                {$Show=1;          next};
+    if(/^-g$/)                {$ShowGridSize=1;  next};
     warn "WARNING: Unknown flag $_\n" if $Remaining{$_};
 }
 
@@ -73,7 +71,7 @@ foreach (@Arguments){
 my $Settings = &current_settings; print $Settings if $Show;
 
 # Show grid
-print "$GridSize\n" if $ShowGridSize;
+print "-g=$GridSize\n" if $ShowGridSize;
 
 exit 0;
 
@@ -81,19 +79,24 @@ exit 0;
 
 sub get_settings{
 
-    # Read size of the grid from $NameSizeFile
+    $nX = 0;
+    $nP = 0;
+
+    # Read size of the grid and max number of particles from $NameSizeFile
     open(FILE, $NameSizeFile) or die "$ERROR could not open $NameSizeFile\n";
     while(<FILE>){
 	next if /^\s*!/;
-	$nX   =$1 if /\bnVertexMax\s*=[^0-9]*(\d+)/i;
-	$nP   =$1 if /\bnParticle\s*=[^0-9]*(\d+)/i;
+	$nX = $1 if /\bnVertexMax\s*=[^0-9]*(\d+)/i;
+	$nP = $1 if /\bnParticle\s*=[^0-9]*(\d+)/i;
     }
     close FILE;
 
     die "$ERROR could not read nVertexMax from $NameSizeFile\n" 
-	unless length($nP);                         
+	unless $nX > 0;
+    die "$ERROR could not read nParticle from $NameSizeFile\n" 
+	unless $nP > 0;
 
-    $GridSize = "$nP";
+    $GridSize = "$nX,$nP";
 
 }
 
@@ -103,8 +106,8 @@ sub set_grid_size{
 
     $GridSize = $NewGridSize if $NewGridSize;
 
-      if($GridSize =~ /^[1-9]\d*,[1-9]\d*$/){
-	  ($nX,$nP) = split(',', $GridSize);
+    if($GridSize =~ /^[1-9]\d*,[1-9]\d*$/){
+	($nX,$nP) = split(',', $GridSize);
     }elsif($GridSize =~ /^[1-9]\d*$/){
 	$nX = $GridSize;
     }elsif($GridSize){
@@ -133,8 +136,8 @@ sub print_help{
 Additional options for PARMISAN/Config.pl:
 
 -g=nX,nP
-                Set grid size. 
-                nX is maximum number of particles per field line,
+                Set grid size. nX is the number of grid cells and
+                nP is maximum number of particles per field line,
 \n";
     exit 0;
 }
@@ -142,8 +145,7 @@ Additional options for PARMISAN/Config.pl:
 #############################################################################
 
 sub current_settings{
-    $Settings  = "Number of nodes per line   : nNode=$nX\n";
-    $Settings .= "Number of particles per line =$nP\n";
-	
+    $Settings  = "Number of nodes per line: $nX\n";
+    $Settings .= "Number of particles per line: $nP\n";
 }
 
