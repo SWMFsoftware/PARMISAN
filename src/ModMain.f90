@@ -30,8 +30,9 @@ module PT_ModMain
   ! Methods and variables from ModReadMhData
   public  :: DoReadMhData
   logical, public :: DoTraceShock = .true.
+
   ! Methods and variables from this module
-  public:: read_param, initialize, finalize, run, check, DoRestart,        &
+  public:: read_param, initialize, finalize, run, check, DoRestart,          &
        IsLastRead, UseStopFile, CpuTimeMax, TimeMax, nIterMax, IsStandAlone
 contains
   !============================================================================
@@ -41,6 +42,9 @@ contains
     use PT_ModReadMHData,    ONLY: read_param_mhdata     => read_param
     use PT_ModTime,          ONLY: read_param_time       => read_param
     use PT_ModPlot,          ONLY: read_param_plot       => read_param
+    use PT_ModParticle,      ONLY: read_param_particle   => read_param
+    use PT_ModRandom,        ONLY: read_param_random     => read_param
+    use PT_ModFieldline,     ONLY: read_param_fieldline  => read_param
     ! Read input parameters for PT component
     use ModReadParam, ONLY: &
          read_var, read_line, read_command, i_session_read, read_echo_set
@@ -112,6 +116,14 @@ contains
           call read_param_time(NameCommand)
        case("#PLOT")
           call read_param_plot(NameCommand)
+       case("#PARTICLE")
+         call read_param_particle(NameCommand)
+       case("#INPUTSEED")
+         call read_param_random(NameCommand)
+       case("#BC")
+         call read_param_fieldline(NameCommand)
+       case("#SCHEME")
+         call read_param_fieldline(NameCommand)
        case default
           call CON_stop(NameSub//': Unknown command '//NameCommand)
        end select

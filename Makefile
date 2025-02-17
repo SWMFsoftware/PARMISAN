@@ -75,6 +75,7 @@ rundir:
 		touch ${RUNDIR}/core; chmod 444 ${RUNDIR}/core; \
 		cd ${RUNDIR}; ln -s ${BINDIR}/${DEFAULT_EXE} .; \
 		ln -s ${BINDIR}/DSA.exe .; \
+		cp ${PTDIR}/seed.in seed.in ; \
 	fi);
 
 clean:  install

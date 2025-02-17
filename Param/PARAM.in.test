@@ -2,20 +2,42 @@
 T			DoEcho
 
 #CPUTIMEMAX
-60.0			CpuTimeMax
+28440			CpuTimeMax
 
 #PLOT
-24			nTimeBin
-100			nEbin
-4			nPlotFile
-Cross_1.2.dat		NamePlotFile_I(:)
-1.2			rPlot_I(:)
-Cross_1.4.dat		NamePlotFile_I(:)
-1.4			rPlot_I(:)
-Cross_1.6.dat		NamePlotFile_I(:)
-1.6			rPlot_I(:)
-Cross_1.8.dat		NamePlotFile_I(:)
-1.8			rPlot_I(:)
+20          nCrossings # number of output files: each an array of (nt x nE)
+10.0        crossMin   # [Rs]
+250.0       crossMax   # [Rs]
+200			nTimeBin
+0.0         tBinMin    # [hr]
+40.0        tBinMax    # [hr]
+200			nEnergyBin
+1.0         eBinMin    # [keV]
+1e6         eBinMax    # [keV]
 
+#SCHEME
+S           Scheme # I = Ito, S = Stratonovich
+
+#BC
+1.5             rMin # [Rsun]
+250.0           rMax # [Rsun]
+153700.0        tMax # [s]
+2.5             rMinInject # [Rsun]
+200.0           rMaxInject # [Rsun]
+0.0001          TimeStepFactor # (default = 0.0001)
+10.0            MaxTimeStep # [s]
+
+
+#PARTICLE
+300             nParticlePerProc 
+10.0            initialEnergy  # [keV]
+40              nSplitLev      # number of energy thresholds where splitting occurs
+80              nSplitMax      # maximum number of split particles per parent
+1.0             eSplitLevelMin # [MeV]
+1000.0          eSplitLevelMax # [MeV]
+
+
+#INPUTSEED
+F               UseInputSeedFile
 
 #END
