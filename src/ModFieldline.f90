@@ -1,7 +1,8 @@
 module PT_ModFieldline
     use ModKind
     use ModMpi
-    use ModUtilities, ONLY: find_cell 
+    use ModUtilities, ONLY: find_cell
+    use PT_ModRandom, ONLY: get_random_normal
 
     use PT_ModConst
 
@@ -17,7 +18,7 @@ module PT_ModFieldline
     real :: tMin, tMax, rMin, rMax, shockMaxR, rMinInject, rMaxInject ! extreme values
     real :: TimeStepFactor, MaxTimeStep
     real :: StratoFactor ! 1 if Ito, 0 if Stratonovich
-
+    real :: DxxShockFactor, DxxCoronaFactor, DxxShockDistance, DxxCoronaDistance
     ! Arrays are data read in from field line files: size (nT, nS)
     ! TODO: Change array names to match SWMF naming convention
     real, allocatable :: time_Array(:), S_Array(:,:), rho_Array(:,:), &
@@ -53,12 +54,19 @@ contains
             call read_var('rMaxInject', rMaxInject)
             call read_var('TimeStepFactor', TimeStepFactor)
             call read_var('MaxTimeStep', MaxTimeStep)
+        case('#DIFFUSION')
+            call read_var('DxxShockFactor', DxxShockFactor)
+            call read_var('DxxShockDistance', DxxShockDistance)
+            call read_var('DxxCoronaFactor', DxxCoronaFactor)
+            call read_var('DxxCoronaDistance', DxxCoronaDistance)
 
             ! Convert to cm
             rMin = rMin * cRsun
             rMax = rMax * cRsun
             rMinInject = rMinInject * cRsun
             rMaxInject = rMaxInject * cRsun
+            DxxShockDistance = DxxShockDistance * cRsun
+            DxxCoronaDistance = DxxCoronaDistance * cRsun
 
         case default
             call CON_stop(NameSub//' Unknown command '//NameCommand)
@@ -227,7 +235,6 @@ contains
         integer :: iS
         real :: iSfrac, dS, Timestep, SLagrTemp(nS)
         character(len=*), parameter :: NameSub = 'get_distance_along_fieldline'
-
         ! Uses current velocity to backpropagate if Time < LagrTime
         ! Not exactly correct, so warn if timestep is too large
         Timestep = Time - LagrTime
@@ -413,15 +420,37 @@ contains
         real, intent(in) :: S, Time, Momentum
         real, intent(out) :: Dxx
 
-        real :: Dxx0, R, Energy
-        
-        Dxx0 = 5.16d18 ! cm^2 / s
+        real :: R, Energy, RandNormal
+        real :: Dxx0, rExponent
+        real :: Rshock, DeltaR
+        integer :: iTime
+        real :: iTimeFrac
+        ! Uses formula from Chen et al., 2024 for Dxx
+        ! Added in uncertainity by sampling from normal distributions with given errors
+        ! Hard-coded numbers are taken straight from Chen et al., 2024 Equation 4
+
+        call get_random_normal(RandNormal)
+        Dxx0 = 5.16d18 + 1.22d18*RandNormal! cm^2 / s
+
+        ! Cap at 3-sigma value, otherwise this can go negative
+        Dxx0 = max(Dxx0, 1.5d18)
         
         call get_array_value(S, Time, R_Array, R)
-        
         Energy = sqrt((Momentum*cLightSpeed)**2 + cProtonRestEnergy**2) - cProtonRestEnergy
-        
-        Dxx = Dxx0 * (R / cAU)**(1.17) * (Energy / ckeV)**(0.71)
+
+        call get_random_normal(RandNormal)
+        rExponent = 1.17 + 0.08*RandNormal
+
+        Dxx = Dxx0 * (R / cAU)**(rExponent) * (Energy / ckeV)**(0.71)
+
+        ! ======== Decrease Dxx near corona ======== ! 
+        if(R.lt.DxxCoronaDistance) Dxx = Dxx * DxxCoronaFactor
+
+        ! ======== Decrease Dxx near shock ======== !
+        call find_cell(1, nT, Time, iTime, iTimeFrac, time_Array)
+        Rshock = shockLocation(iTime) + iTimeFrac * (shockLocation(iTime+1) - shockLocation(iTime))
+        DeltaR = abs(R - Rshock)
+        if(DeltaR.lt.DxxShockDistance) Dxx = Dxx * DxxShockFactor
 
     end subroutine get_diffusion_coeff
     !============================================================================

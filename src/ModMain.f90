@@ -122,6 +122,8 @@ contains
          call read_param_random(NameCommand)
        case("#BC")
          call read_param_fieldline(NameCommand)
+       case("#DIFFUSION")
+         call read_param_fieldline(NameCommand)
        case("#SCHEME")
          call read_param_fieldline(NameCommand)
        case default

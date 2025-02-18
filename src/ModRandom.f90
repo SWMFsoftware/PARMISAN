@@ -128,6 +128,9 @@ contains
         ! returns random number sampled from normal distribution
         ! with mean = 0 and std = 1
 
+        ! Box-Muller transformation limits the random variable to rn < ~6 
+        ! physically limiting the size of the random diffusive process
+
         real, intent(out) :: RandNormal1 !, RandNormal2
         real :: RandUniform1, RandUniform2
 
@@ -140,12 +143,8 @@ contains
         RandUniform2 = 1 - RandUniform2
         
         ! Box-Muller transformation
-
         ! two independent random variable with standard normal distribution
         ! only need one for 1-D version
-
-        ! this limits the random variable to rn < ~6 
-        ! physically limiting the size of the random diffusive process
         
         RandNormal1 = sqrt(-2*log(RandUniform1))*cos(0.5*cFourPi*RandUniform2)
         ! RandNormal2 = sqrt(-2*log(RandUniform1))*sin(0.5*fourpi*RandUniform2)

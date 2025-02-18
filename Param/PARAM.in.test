@@ -27,9 +27,14 @@ S           Scheme # I = Ito, S = Stratonovich
 0.0001          TimeStepFactor # (default = 0.0001)
 10.0            MaxTimeStep # [s]
 
+#DIFFUSION
+0.5             DxxShockFactor
+0.5             DxxShockDistance # [Rsun] within this distance from shock, reduce Dxx by factor
+0.1             DxxCoronaFactor
+10.0            DxxCoronaDistance # [Rsun] at lower Rs, reduce Dxx by factor
 
 #PARTICLE
-300             nParticlePerProc 
+10             nParticlePerProc 
 10.0            initialEnergy  # [keV]
 40              nSplitLev      # number of energy thresholds where splitting occurs
 80              nSplitMax      # maximum number of split particles per parent
