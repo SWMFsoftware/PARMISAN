@@ -58,6 +58,13 @@ DSA:
 	cd src; ${MAKE} LIB
 	cd src; ${MAKE} DSA
 
+TestParmisan:
+	cd ${SHAREDIR}; ${MAKE} LIB
+	cd ${EMPIRICALCRDIR}; ${MAKE} LIB
+	cd ${TIMINGDIR}; ${MAKE} LIB
+	cd src; ${MAKE} LIB
+	cd src; ${MAKE} TestParmisan
+
 COMPONENT = PT
 
 rundir:
@@ -75,6 +82,8 @@ rundir:
 		touch ${RUNDIR}/core; chmod 444 ${RUNDIR}/core; \
 		cd ${RUNDIR}; ln -s ${BINDIR}/${DEFAULT_EXE} .; \
 		ln -s ${BINDIR}/DSA.exe .; \
+		ln -s ${BINDIR}/TestParmisan.exe .; \
+		ln -s ${BINDIR}/TestSDE.exe .; \
 		cp ${PTDIR}/seed.in seed.in ; \
 	fi);
 
