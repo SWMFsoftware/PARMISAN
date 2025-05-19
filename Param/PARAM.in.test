@@ -2,39 +2,35 @@
 T			DoEcho
 
 #CPUTIMEMAX
-28440			CpuTimeMax
+28440			CpuTimeMax # 28440
 
 #PLOT
-20          nCrossings # number of output files: each an array of (nt x nE)
-10.0        crossMin   # [Rs]
-250.0       crossMax   # [Rs]
-200			nTimeBin
-0.0         tBinMin    # [hr]
-40.0        tBinMax    # [hr]
-200			nEnergyBin
-1.0         eBinMin    # [keV]
-1e6         eBinMax    # [keV]
+100         NumLocations # number of output files: each an array of (nt x nE)
+50.0        rBinMin     # [Rs]
+215.0       rBinMax     # [Rs]
+10          LagrBinSize 
+100	        NumTimes
+0.0         tBinMin     # [hr]
+40          tBinMax     # [hr]
+120.0       TimeBinSize # [s]
+200         nEnergyBin
+1.0         eBinMin     # [keV]
+1e7         eBinMax     # [keV]
 
 #SCHEME
 S           Scheme # I = Ito, S = Stratonovich
 
 #BC
-1.5             rMin # [Rsun]
+1.2             rMin # [Rsun]
 250.0           rMax # [Rsun]
 153700.0        tMax # [s]
-2.5             rMinInject # [Rsun]
-200.0           rMaxInject # [Rsun]
+1.3             rMinInject # [Rsun]
+150.0            rMaxInject # [Rsun]
 0.0001          TimeStepFactor # (default = 0.0001)
 10.0            MaxTimeStep # [s]
 
-#DIFFUSION
-0.5             DxxShockFactor
-0.5             DxxShockDistance # [Rsun] within this distance from shock, reduce Dxx by factor
-0.1             DxxCoronaFactor
-10.0            DxxCoronaDistance # [Rsun] at lower Rs, reduce Dxx by factor
-
 #PARTICLE
-10             nParticlePerProc 
+1000            nParticlePerProc  
 10.0            initialEnergy  # [keV]
 40              nSplitLev      # number of energy thresholds where splitting occurs
 80              nSplitMax      # maximum number of split particles per parent

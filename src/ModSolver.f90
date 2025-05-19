@@ -2,31 +2,30 @@ module PT_ModSolver
 
     use PT_ModRandom, ONLY: get_random_normal
 
-    use PT_ModFieldline, ONLY: get_sde_coeffs, get_sde_coeffs_milstein, &
-                               StratoFactor, nDim
-
+    use PT_ModFieldline, ONLY: get_sde_coeffs, StratoFactor, nDim
+    ! use PT_ModTestFieldline, ONLY: get_sde_coeffs, StratoFactor, nDim
     implicit none
     SAVE
     real :: Wk, Sk
 
 contains
     !==============================================================================
-    subroutine milstein(X_I, Time, Timestep, Weight, Xnew_I)
-        real, intent(in) :: X_I(nDim), Time
-        real, intent(out) :: Timestep, Weight, Xnew_I(nDim)
+    ! subroutine milstein(X_I, Time, Timestep, Weight, Xnew_I)
+        !     real, intent(in) :: X_I(nDim), Time
+        !     real, intent(out) :: Timestep, Weight, Xnew_I(nDim)
 
-        real :: DriftCoeff(nDim), DiffCoeff(nDim), dDiffdX(nDim)
-        real :: RandomNormal
+        !     real :: DriftCoeff(nDim), DiffCoeff(nDim), dDiffdX(nDim)
+        !     real :: RandomNormal
 
-        call get_sde_coeffs_milstein(X_I, Timestep, Weight, DriftCoeff, DiffCoeff, dDiffdX)
-        
-        call get_random_normal(RandomNormal)
-        Wk = sqrt(Timestep)*RandomNormal
+        !     call get_sde_coeffs_milstein(X_I, Timestep, Weight, DriftCoeff, DiffCoeff, dDiffdX)
+            
+        !     call get_random_normal(RandomNormal)
+        !     Wk = sqrt(Timestep)*RandomNormal
 
-        Xnew_I = X_I + DriftCoeff * Timestep + DiffCoeff * Wk + &
-                 dDiffdX * (Wk**2 - Timestep)
+        !     Xnew_I = X_I + DriftCoeff * Timestep + DiffCoeff * Wk + &
+        !              dDiffdX * (Wk**2 - Timestep)
 
-    end subroutine milstein
+    ! end subroutine milstein
     !==============================================================================
     subroutine rk2_sde(X_I, Time, Timestep, Xnew_I)
         ! Runge Kutta 2 Scheme for SDEs

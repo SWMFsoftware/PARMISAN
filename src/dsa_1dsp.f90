@@ -2,14 +2,15 @@ program dsa_1D_spherical
 
    ! solves the Parker transport equation using stochastic integration method
    ! 1D lagrangian frame along single IMF line
+   ! solves acceleration and transport
    !
    ! particle splitting is used
    !
    ! Can solve equivalent Ito or Stratonovich using RK2 (or Milstein for Ito) approach
    !
-   ! Particles can be injected with 1/r^2 dependence or uniformly in r
+   ! Particles are injected uniformly in r
    !
-   ! Particles can be injected at constant energy or from 1/v^5 distribution
+   ! Particles can be injected at constant energy (default) or from 1/v^5 distribution
    !
    ! this is an mpi version
    use ModKind
@@ -32,13 +33,12 @@ program dsa_1D_spherical
    
    use PT_ModConst, ONLY: cRsun, ckeV, cMeV
    
-   use PT_ModPlot, ONLY : set_bins, put_flux_contribution, save_fluxes
-
-   use PT_ModParticle
-  
+   use PT_ModPlot, ONLY : set_bins, bin_particle, save_output, increase_total_weight
    use PT_ModProc, ONLY: iProc, nProc, iComm, iError
+   use PT_ModParticle
 
    use PT_ModFieldline, ONLY: read_fieldline
+   ! use PT_ModTestFieldline, ONLY: read_fieldline
 
    use PT_ModRandom, ONLY: init_random_seed, read_seed_file, &
                            save_seed, UseInputSeedFile
@@ -48,18 +48,17 @@ program dsa_1D_spherical
    integer      :: iSession = 1
    real(Real8_) :: CpuTimeStart, CpuTime
    logical      :: IsFirstSession = .true.
-   logical      :: UseSplit = .true.
+   logical      :: UseSplit = .false.
 
    logical :: IsOutside
 
    integer :: n, lev, iSplit, iSplitCounter
    integer, allocatable :: lev_save_split(:)
    real :: weight
-   real, allocatable :: s_save_split(:), t_save_split(:), &
-      p_save_split(:), r_save_split(:)
+   real, allocatable ::  t_save_split(:), p_save_split(:), lagr_save_split(:)
 
    character(len = 20) :: iProcStr
-   
+   integer :: counter = 0
    ! mpi initialization routines
    !----------------------------------------------------------------------------
    call MPI_INIT( iError )
@@ -78,8 +77,6 @@ program dsa_1D_spherical
 
    ! Read PARAM.in file. Provide default restart file for #RESTART
    call read_file('PARAM.in', iComm)
-
-   open(18, file = 'PT/IO2/trajectory'//trim(iProcStr)//'.dat', status = 'unknown')
 
    SESSIONLOOP: do
       call read_init('  ', iSessionIn=iSession)
@@ -114,9 +111,8 @@ program dsa_1D_spherical
          ! definititions, simulation paramters (cgs units)
 
          if(.not.allocated(lev_save_split)) allocate(lev_save_split(1:nSplitMax))
-         if(.not.allocated(s_save_split)) allocate(s_save_split(1:nSplitMax))
          if(.not.allocated(t_save_split)) allocate(t_save_split(1:nSplitMax))
-         if(.not.allocated(r_save_split)) allocate(r_save_split(1:nSplitMax))
+         if(.not.allocated(lagr_save_split)) allocate(lagr_save_split(1:nSplitMax))
          if(.not.allocated(p_save_split)) allocate(p_save_split(1:nSplitMax))
 
          call init_split_grid
@@ -137,7 +133,7 @@ program dsa_1D_spherical
             if(iSplit.eq.0) then
 
                call initialize_particle
-               write(18,*), Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(R_)/cRsun, Particle_V(Energy_)/ckeV
+               ! if(n.eq.1) call save_particle_trajectory(iProc, n)
                lev = 1
                iSplitCounter = 0
 
@@ -147,37 +143,37 @@ program dsa_1D_spherical
                if(iSplitCounter > iSplit) EXIT SPLITLOOP
 
                call init_split_particle(t_save_split(iSplitCounter), &
-                                        s_save_split(iSplitCounter), &
-                                        p_save_split(iSplitCounter), &
-                                        r_save_split(iSplitCounter))
-             
+                                        lagr_save_split(iSplitCounter), &
+                                        p_save_split(iSplitCounter), lev)
+               
             end if
             ! time loop
-
+            call increase_total_weight(Particle_V(Weight_))
+            ! call save_initial_state(iProc)
             TIMELOOP: do
+               call advance_particle()
 
-               call advance_particle
-               write(18,*), Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(R_)/cRsun, Particle_V(Energy_)/ckeV
-               ! adjust weight for split particles
-               ! add this to ModParticle
-               weight = Particle_V(Weight_)*(2.d0**(-real(lev-1)))
+               ! if(n.eq.1) call save_particle_trajectory(iProc, n)
 
-               ! Save particle if it crossed specified radial distance
-               call put_flux_contribution(Particle_V(ROld_), Particle_V(R_), &
-                                          Particle_V(Time_), Particle_V(Energy_), weight)
+               ! Checks particle position, lagrange coordinate, and time
+               call check_boundary_conditions(IsOutside)               
+               if(IsOutside) then 
+                  ! call debug_particle('')
+                  ! call save_final_state(iProc)
+                  EXIT TIMELOOP
+               end if
+
+               call bin_particle(Particle_V(LagrCoord_), Particle_V(Time_), &
+                                 Particle_V(Energy_), Particle_V(Weight_))
 
                ! calculate cpu time
                CpuTime =  mpi_wtime() - CpuTimeStart
                if (CpuTime > CpuTimeMax)then
-                  call save_fluxes
+                  write(*,*) 'CPU Max Time Reached: iProc, N_completed: ', iProc, n-1
+                  call save_output
                   call MPI_finalize(iError)
                   stop
                end if
-
-               ! Checks particle position, lagrange coordinate, and time
-               call check_boundary_conditions(IsOutside)               
-
-               if(IsOutside) EXIT TIMELOOP
                
                ! particle splitting
                if(UseSplit)then
@@ -186,14 +182,13 @@ program dsa_1D_spherical
                      lev=lev+1
                      iSplit=iSplit+1
                      t_save_split(iSplit) = Particle_V(Time_)
-                     s_save_split(iSplit) = Particle_V(S_)
                      p_save_split(iSplit) = Particle_V(Momentum_)
-                     r_save_split(iSplit) = Particle_V(R_)
+                     lagr_save_split(iSplit) = Particle_V(LagrCoord_)
                      lev_save_split(iSplit) = lev
                   end if
                end if
             end do TIMELOOP
-            write(18,*) -1.0, -1.0, -1.0, -1.0
+           
             if( lev==1 ) EXIT SPLITLOOP ! no particles were split, exit
             ! need to go back and do all split particles
          end do SPLITLOOP
@@ -210,7 +205,7 @@ program dsa_1D_spherical
    end do SESSIONLOOP
 
    ! finialize mpi routine
-   call save_fluxes
+   call save_output
    call MPI_finalize(iError)
    
 end program dsa_1D_spherical

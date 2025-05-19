@@ -23,7 +23,8 @@ OBJECTS = \
 	ModKappa.o \
 	ModSolver.o \
 	ModRandom.o \
-	ModFieldline.o
+	ModFieldline.o \
+	ModTestFieldline.o
 
 ModSize.f90: ModSize_orig.f90
 	cp -f ModSize_orig.f90 ModSize.f90
