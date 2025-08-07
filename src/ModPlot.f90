@@ -3,10 +3,11 @@
   !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModPlot
   
+  use ModKind
   use PT_ModConst
   use PT_ModProc, ONLY : iProc, iComm, iError
-  use PT_ModFieldline, ONLY : compute_conversion_factor, get_lagr_coord
-  ! use PT_ModTestFieldline, ONLY : compute_conversion_factor, get_lagr_coord
+  ! use PT_ModFieldline, ONLY : compute_conversion_factor
+  use PT_ModTestFieldline, ONLY : compute_conversion_factor
   use PT_ModParticle, ONLY : energy_to_momentum
 
   implicit none
@@ -16,18 +17,20 @@ module PT_ModPlot
   character(len=*), parameter :: SplitFile = 'split_levels.dat'
   character(len=*), parameter :: TimeFile =  'time.dat'
   character(len=*), parameter :: EnergyBinFile = 'energy_bin.dat'
-  character(len=*), parameter :: DistBinFile = 'r_bin.dat'
+  character(len=*), parameter :: LagrBinFile = 'lagr_bin.dat'
   
-  integer :: NumTimes, nEnergyBins, NumLocations
-  real :: tBinMin, tBinMax, eBinMin, eBinMax, rBinMin, rBinMax
-  real :: LagrBinSize, TimeBinSize
+  integer :: nSaveTimes, nEnergyBins, nLagrBins
+  real :: tSaveMin, tSaveMax, eBinMin, eBinMax, lagrBinMin, lagrBinMax
+
   real :: TotalWeight
 
+  ! Time bin
+  real, parameter :: timeWindow = 5.0
   ! Array for storing the counts
   real, allocatable :: Counts_III(:,:,:)
   
   ! Bins
-  real, allocatable :: eBin_I(:), rBin_I(:), tBin_I(:), lagrBin_I(:,:)
+  real, allocatable :: Ebin_I(:), LagrBin_I(:), Time_I(:)
   
 contains
   !============================================================================
@@ -42,25 +45,19 @@ contains
     select case(NameCommand)
     case('#PLOT')
 
-       call read_var('NumLocations', NumLocations)
-       call read_var('rBinMin', rBinMin)
-       call read_var('rBinMax', rBinMax)
-       call read_var('LagrBinSize', LagrBinSize)
-       call read_var('NumTimes', NumTimes)
-       call read_var('tBinMin', tBinMin)
-       call read_var('tBinMax', tBinMax)
-       call read_var('TimeBinSize', TimeBinSize)
+       call read_var('nLagrBins', nLagrBins)
+       call read_var('lagrBinMin', lagrBinMin)
+       call read_var('lagrBinMax', lagrBinMax)
+       call read_var('nSaveTimes', nSaveTimes)
+       call read_var('tSaveMin', tSaveMin)
+       call read_var('tSaveMax', tSaveMax)
        call read_var('nEnergyBins', nEnergyBins)
        call read_var('eBinMin', eBinMin)
        call read_var('eBinMax', eBinMax)
 
       ! Convert to seconds
-      tBinMin = tBinMin * 3600.
-      tBinMax = tBinMax * 3600.
-
-      ! Convert to meters
-      rBinMin = rBinMin * cRsun
-      rBinMax = rBinMax * cRsun
+      tSaveMin = tSaveMin * 3600.
+      tSaveMax = tSaveMax * 3600.
 
       ! Convert to keV
       eBinMin = eBinMin * ckeV
@@ -73,43 +70,38 @@ contains
   !============================================================================
   subroutine set_bins()
 
-    integer :: iE, iR, iT
+    integer :: iBin
     real :: dLogE, dT, dR
 
-    allocate(Counts_III(NumTimes, nEnergyBins, NumLocations)); Counts_III = 0.0
-    allocate(tBin_I(NumTimes))
-    allocate(eBin_I(nEnergyBins+1))
-    allocate(rBin_I(NumLocations))
-    allocate(lagrBin_I(NumTimes, NumLocations))
+    allocate(Counts_III(nSaveTimes, nEnergyBins, nLagrBins)); Counts_III = 0.0
+    allocate(Time_I(nSaveTimes+1))
+    allocate(Ebin_I(nEnergyBins+1))
+    allocate(LagrBin_I(nLagrBins+1))
 
-    ! centers of time and spatial bins
-    ! lagr bins are function of time
-    ! width of time, lagr bins are from param.in and used in bin_particle
-    dT = (tBinMax - tBinMin) / (NumTimes-1)
-    dR = (rBinMax - rBinMin) / (NumLocations-1)
-    do iT = 1, NumTimes
-      tBin_I(iT) = tBinMin + dT * (iT-1)
-      do iR = 1, NumLocations
-        rBin_I(iR) = rBinMin + dR * (iR - 1)
-        call get_lagr_coord(tBin_I(iT), rBin_I(iR), lagrBin_I(iT, iR))
-      end do 
+    dT = (tSaveMax - tSaveMin) / (nSaveTimes)
+    do iBin = 1, nSaveTimes+1
+      Time_I(iBin) = tSaveMin + dT * (iBin-1) 
     end do
 
-    ! edges of energy bins
     dLogE = (log10(eBinMax) - log10(eBinMin)) / (nEnergyBins)
-    do iE = 1, nEnergyBins+1
-       eBin_I(iE) = 10.0**(log10(eBinMin)+ dLogE*(iE-1))
+    do iBin = 1, nEnergyBins+1
+       Ebin_I(iBin) = 10.0**(log10(eBinMin)+ dLogE*(iBin-1))
+    end do
+
+    dR = (lagrBinMax - lagrBinMin) / (nLagrBins)
+    do iBin = 1, nLagrBins+1
+      LagrBin_I(iBin) = lagrBinMin + dR * (iBin - 1)
     end do
 
     if(iProc==0) then
        open(801,file=OutputDir//EnergyBinFile,status='unknown')
-       write(801,'(1000e15.6)')eBin_I/ckeV
+       write(801,'(1000e15.6)')Ebin_I/ckeV
        close(801)
        open(801,file=OutputDir//TimeFile,status='unknown')
-       write(801,'(1000e15.6)')tBin_I
+       write(801,'(1000e15.6)')Time_I
        close(801)
-       open(801,file=OutputDir//DistBinFile,status='unknown')
-       write(801,'(1000e15.6)')rBin_I/cRsun
+       open(801,file=OutputDir//LagrBinFile,status='unknown')
+       write(801,'(1000e15.6)')LagrBin_I
        close(801)
     end if
 
@@ -125,30 +117,23 @@ contains
     real, intent(in) :: LagrCoord, Time, Energy, Weight
     integer :: iL, iE, iT, i
 
-    !--------------------------------------------------------------------------
-    if(Energy.lt.eBin_I(1).or.Energy.ge.eBin_I(nEnergyBins+1)) return
-    if(Time.lt.tBin_I(1).or.Time.ge.tBin_I(NumTimes)) return
+    ! iT = -1
+
+    !do i = 1, nSaveTimes
+    !    if(Time.le.Time_I(i) + timeWindow.and.Time.gt.Time_I(i) - timeWindow) iT = i
+    !end do
+
+    !if(iT.eq.-1) return
+
+    if(LagrCoord.lt.LagrBin_I(1).or.LagrCoord.ge.LagrBin_I(nLagrBins+1)) return
+    if(Time.lt.Time_I(1).or.Time.ge.Time_I(nSaveTimes+1)) return
+    if(Energy.lt.Ebin_I(1).or.Energy.ge.Ebin_I(nEnergyBins+1)) return
 
     !--------------------------------------------------------------------------
-    iT = -1
-    do i = 1, NumTimes
-        if((Time.le.tBin_I(i) + 0.5*TimeBinSize).and.(Time.gt.tBin_I(i) - 0.5*TimeBinSize)) iT = i
-    end do
- 
-    if(iT.eq.-1) return
-
-    !--------------------------------------------------------------------------
-    iL = -1
-    do i = 1, NumLocations
-      if((LagrCoord.le.lagrBin_I(iT, i) + 0.5*LagrBinSize).and.(LagrCoord.gt.lagrBin_I(iT, i) - 0.5*LagrBinSize)) iL = i
-    end do
-
-    if(iL.eq.-1) return
-
-    !--------------------------------------------------------------------------
-    iE = minloc(Energy - eBin_I, mask = ((Energy - eBin_I).ge.0), dim = 1)
+    iT = minloc(Time - Time_I, mask = (Time - Time_I > 0), dim = 1) 
+    iL = minloc(LagrCoord - LagrBin_I, mask = (LagrCoord - LagrBin_I > 0), dim = 1)
+    iE = minloc(Energy - Ebin_I, mask = (Energy - Ebin_I > 0), dim = 1)
     Counts_III(iT, iE, iL) = Counts_III(iT, iE, iL) + Weight
-
   end subroutine bin_particle
   !============================================================================
   subroutine calculate_distribution_function
@@ -156,24 +141,24 @@ contains
     ! divide by total weight, divide by bin widths, multiply by conversion factor
     ! Bins are momentum and lagrcoord taken at a snapshot in time
     ! Conversion factor is F = dS/B * f. Solved for F, want f.
+    
     real :: dP, p1, p2
-    real :: dLagr, factor, conversion
+    real :: dLagr, factor, conversion, dTime
     integer :: iE, iT, iL
 
     do iE = 1, nEnergyBins
-      call energy_to_momentum(eBin_I(iE), p1)
-      call energy_to_momentum(eBin_I(iE+1), p2)
+      call energy_to_momentum(Ebin_I(iE), p1)
+      call energy_to_momentum(Ebin_I(iE+1), p2)
       dP = p2**3.0 / 3.0 - p1**3.0 / 3.0
 
-      do iT = 1, NumTimes
-
-        do iL = 1, NumLocations
-          factor = TotalWeight * LagrBinSize * dP * TimeBinSize
-          call compute_conversion_factor(tBin_I(iT), lagrBin_I(iT, iL) - 0.5 * LagrBinSize, &
-                                         lagrBin_I(iT, iL) + 0.5*LagrBinSize, conversion)
-          ! TODO: Missing multiplication by timestep - not sure how to do this with adaptive stepping
+      do iT = 1, nSaveTimes
+        dTime = Time_I(iT+1) - Time_I(iT)
+        do iL = 1, nLagrBins
+          dLagr = LagrBin_I(iL+1) - LagrBin_I(iL)
+          factor = TotalWeight * dLagr * dP * dTime !timeWindow*2.0
+          call compute_conversion_factor(Time_I(iT), LagrBin_I(iL)+0.5*dLagr, conversion)
+          ! Missing multiplication by timestep - not sure how to do this with adaptive stepping
           Counts_III(iT, iE, iL) = Counts_III(iT, iE, iL) * conversion / factor
-
         end do
       end do
 
@@ -189,28 +174,27 @@ contains
 
     ! Save fluxes stored at different radial distances
     !--------------------------------------------------------------------------
-    call MPI_reduce_real_array(Counts_III, NumTimes*nEnergyBins*NumLocations, MPI_SUM, 0,&
+    call MPI_reduce_real_array(Counts_III, nSaveTimes*nEnergyBins*nLagrBins, MPI_SUM, 0,&
          iComm, iError)
     call MPI_reduce_real_scalar(TotalWeight, MPI_SUM, 0, iComm, iError)
 
     ! Save data
     ! Calculate conversion from F = ds/B*f 
     ! Divide counts by total weight
-    !  TODO: divide by bin widths here so output is f
     if(iProc/=0) RETURN
 
     write(*,*) 'TotalWeight = ', TotalWeight
     call calculate_distribution_function
 
-    do iTime = 1, NumTimes
+    do iTime = 1, nSaveTimes
       
       write(outputFile, '(A15, I0)') 'distfunc_iTime_', iTime
       outputFile = adjustl(outputFile)
 
       open(901,file=OutputDir//trim(outputFile),status='unknown',action="READWRITE")
 
-      do iLagr = 1, NumLocations
-        write(901,'(1000e15.6)') Counts_III(iTime, :, iLagr)
+      do iLagr = 1, nLagrBins
+        write(901,'(1000e15.6)') Counts_III(iTime, :, iLagr) 
       end do
 
       close(901)

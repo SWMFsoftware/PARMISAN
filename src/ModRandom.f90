@@ -1,5 +1,6 @@
 module PT_ModRandom
     use ModMpi
+    use ModKind
     use PT_ModConst, ONLY: cFourPi
 
     implicit none
@@ -63,7 +64,7 @@ contains
         allocate(Seed_I(nSeed+1))
 
         ! open input file
-        open(8, file = 'PT/Param/seed.in', action = 'read')
+        open(8, file = 'seed.in', action = 'read')
 
         do
             ! read line of seed file
@@ -131,6 +132,8 @@ contains
         ! Box-Muller transformation limits the random variable to rn < ~6 
         ! physically limiting the size of the random diffusive process
 
+        ! can output two random normals if needed
+        
         real, intent(out) :: RandNormal1 !, RandNormal2
         real :: RandUniform1, RandUniform2
 
@@ -139,14 +142,14 @@ contains
         call random_number(RandUniform2)
 
         ! redistribute to (0, 1] to avoid 0
-        RandUniform1 = 1 - RandUniform1
-        RandUniform2 = 1 - RandUniform2
+        RandUniform1 = 1.0 - RandUniform1
+        RandUniform2 = 1.0 - RandUniform2
         
         ! Box-Muller transformation
         ! two independent random variable with standard normal distribution
         ! only need one for 1-D version
         
-        RandNormal1 = sqrt(-2*log(RandUniform1))*cos(0.5*cFourPi*RandUniform2)
+        RandNormal1 = sqrt(-2.0*log(RandUniform1))*cos(0.5*cFourPi*RandUniform2)
         ! RandNormal2 = sqrt(-2*log(RandUniform1))*sin(0.5*fourpi*RandUniform2)
 
     end subroutine get_random_normal

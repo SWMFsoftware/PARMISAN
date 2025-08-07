@@ -2,20 +2,19 @@
   !  portions used with permission
   !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModParticle
-   use PT_ModConst
-   
-   use PT_ModFieldline, ONLY: get_random_shock_location, compute_weight, &
-                              compute_timestep, get_particle_location, &
-                              nS, rMin, rMax, tMax, nDim
-   ! use PT_ModTestFieldline, ONLY: get_random_shock_location, compute_weight, &
-   !                            compute_timestep, get_particle_location, &
-   !                            nS, rMin, rMax, tMax, nDim
-   use PT_ModSolver, ONLY: rk2_sde
+   use PT_ModConst   
+   use ModKind
+   ! use PT_ModFieldline, ONLY: get_random_shock_location, compute_weight, &
+   !                            get_particle_location, nS, rMin, rMax, tMax, nDim
+   use PT_ModTestFieldline, ONLY: get_random_shock_location, compute_weight, &
+                                  get_particle_location, nS, rMin, rMax, tMax, nDim
+
+   use PT_ModSolver, ONLY: euler_sde, milstein_sde
    
    implicit none
    SAVE
 
-   real, allocatable :: Particle_V(:)
+   real, allocatable :: Particle_V(:,:)
    integer :: nParticlePerProc
 
    integer, parameter :: LagrCoord_    = 1,  &
@@ -65,112 +64,93 @@ contains
 
    end subroutine read_param
    !============================================================================
-   subroutine initialize_particle()
-      real :: t
+   subroutine initialize_particles()
       integer :: i
-
-
-      if(.not.allocated(Particle_V)) allocate(Particle_V(1:nVar)) ! modparticle init function?
+      
+      if(.not.allocated(Particle_V)) allocate(Particle_V(1:nParticlePerProc, 1:nVar)) ! modparticle init function?
 
       ! Get particle initial time, radial distance, and distance along fieldline    
-      call get_random_shock_location(Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(R_))
+      do i = 1, nParticlePerProc
+         call get_random_shock_location(Particle_V(i, Time_), Particle_V(i, LagrCoord_), Particle_V(i, R_))
+         Particle_V(i, Energy_) = E0
+         call energy_to_momentum(Particle_V(i, Energy_), Particle_V(i, Momentum_))
+         ! Get weight: T*rho
+         ! TODO: check to see if rho is proton only, if not, need number density of protons
+         call compute_weight(Particle_V(i, Time_), Particle_V(i, LagrCoord_), Particle_V(i, Weight_))
+         call save_state(i)
+      end do
 
-      ! Get initial momentum
-      Particle_V(Energy_) = E0
-      call energy_to_momentum(Particle_V(Energy_), Particle_V(Momentum_))
-
-      ! Get initial timestep
-      call compute_timestep(Particle_V(Time_), Particle_V(LagrCoord_), & 
-                            Particle_V(Momentum_), Particle_V(TimeStep_))
-
-      ! Get weight: T*rho
-      ! TODO: check to see if rho is proton only, if not, need number density of protons
-      call compute_weight(Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(Weight_))
-
-      ! Save particle's current position as previous position
-      call save_state()
-
-   end subroutine initialize_particle
+   end subroutine initialize_particles
    !============================================================================
-   subroutine init_split_particle(Time, LagrCoord, Momentum, splitLev)
+   ! subroutine init_split_particle(Time, LagrCoord, Momentum, splitLev)
 
-      real, intent(in) :: Time, LagrCoord, Momentum
-      integer, intent(in) :: splitLev
+         ! real, intent(in) :: Time, LagrCoord, Momentum
+         ! integer, intent(in) :: splitLev
 
-      Particle_V(Time_) = Time
-      Particle_V(LagrCoord_) = LagrCoord
-      Particle_V(Momentum_) = Momentum
+         ! Particle_V(Time_) = Time
+         ! Particle_V(LagrCoord_) = LagrCoord
+         ! Particle_V(Momentum_) = Momentum
 
-      call momentum_to_energy(Momentum, Particle_V(Energy_))
+         ! call momentum_to_energy(Momentum, Particle_V(Energy_))
 
-      call get_particle_location(Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(R_))
+         ! call get_particle_location(Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(R_))
 
-      ! Get initial timestep
-      call compute_timestep(Particle_V(Time_), Particle_V(LagrCoord_), & 
-                            Particle_V(Momentum_), Particle_V(TimeStep_))
+         ! call compute_weight(Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(Weight_))
+         ! Particle_V(Weight_) = Particle_V(Weight_)*(2.d0**(-real(splitLev-1)))
 
-      call compute_weight(Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(Weight_))
-      Particle_V(Weight_) = Particle_V(Weight_)*(2.d0**(-real(splitLev-1)))
+         ! call save_state()
 
-      call save_state()
-
-   end subroutine init_split_particle
+   ! end subroutine init_split_particle
    !============================================================================
-   subroutine save_state()
+   subroutine save_state(iParticle)
+      integer, intent(in) :: iParticle
 
-      Particle_V(ROld_) = Particle_V(R_)
-      Particle_V(LagrCoordOld_) = Particle_V(LagrCoord_)
-      Particle_V(MomentumOld_) = Particle_V(Momentum_)
+      Particle_V(iParticle, ROld_) = Particle_V(iParticle, R_)
+      Particle_V(iParticle, LagrCoordOld_) = Particle_V(iParticle, LagrCoord_)
+      Particle_V(iParticle, MomentumOld_) = Particle_V(iParticle, Momentum_)
 
    end subroutine save_state
    !============================================================================
-   subroutine advance_particle()
+   subroutine advance_particle(iParticle)
+      integer, intent(in) :: iParticle
 
       ! Vectors solved by SDE
       real :: XOld(nDim), XNew(nDim)
       
       ! Save particle's current position as previous position
-      call save_state
-
+      call save_state(iParticle)
 
       ! Equation advances lagrcoord and p^3/3 not p
-      XOld(LagrCoord_) = Particle_V(LagrCoord_)
-      XOld(Momentum_)  = Particle_V(Momentum_)**3.0 / 3.0
+      XOld(LagrCoord_) = Particle_V(iParticle, LagrCoord_)
+      XOld(Momentum_)  = Particle_V(iParticle, Momentum_)**3.0 / 3.0
       
-      ! Timestep is calculated after moving particle
-      ! Solve SDE - updates Lagrangian coordinate and momentum
-      call rk2_sde(XOld, Particle_V(Time_), Particle_V(TimeStep_), XNew)
-      
-      ! Milstein method allows for calculation of timestep and weight during 
-      ! timestep.
-      !call milstein(XOld, Particle_V(Time_), Particle_V(TimeStep_), Particle_V(Weight_), XNew)
+      ! Advance psuedo-particle one time step
+      call euler_sde(XOld, Particle_V(iParticle, Time_), Particle_V(iParticle, TimeStep_), XNew)
+      ! call milstein_sde(XOld, Particle_V(Time_), Particle_V(TimeStep_), XNew)
 
-      Particle_V(LagrCoord_) = XNew(LagrCoord_)
-      Particle_V(Momentum_) = (3.0*XNew(Momentum_))**(1.0/3.0)
-      call momentum_to_energy(Particle_V(Momentum_), Particle_V(Energy_))
+      ! Update Lagrangian coordinate and momentum
+      Particle_V(iParticle, LagrCoord_) = XNew(LagrCoord_)
+      Particle_V(iParticle, Momentum_) = (3.0*XNew(Momentum_))**(1.0/3.0)
+      call momentum_to_energy(Particle_V(iParticle, Momentum_), Particle_V(iParticle, Energy_))
 
+      ! Update particle time
+      Particle_V(iParticle, Time_) = Particle_V(iParticle, Time_) + Particle_V(iParticle, TimeStep_)
 
-
-      ! Update particle time then calculate new timestep
-      Particle_V(Time_) = Particle_V(Time_) + Particle_V(TimeStep_)
-
-      ! get_particle_location and compute_timestep will crash if LagrCoord is 
-      ! outside these bounds. 
-      ! TODO: this can be handled better
-      if(Particle_V(LagrCoord_) < 1.0 .or. Particle_V(LagrCoord_) > nS - 1.0) return
+      ! reflection at inner boundary
+      if(Particle_V(iParticle, LagrCoord_) < 2.0) Particle_V(iParticle, LagrCoord_) = 4.0 - Particle_V(iParticle, LagrCoord_)
 
       ! Update radial distance (R)
-      call get_particle_location(Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(R_))
-      
-      ! calculate new timestep
-      call compute_timestep(Particle_V(Time_), Particle_V(LagrCoord_), & 
-                            Particle_V(Momentum_), Particle_V(TimeStep_))
+      call get_particle_location(Particle_V(iParticle, Time_), Particle_V(iParticle, LagrCoord_), Particle_V(iParticle, R_))
 
    end subroutine advance_particle
    !============================================================================
    subroutine init_split_grid()
-      use PT_ModPlot, ONLY: OutputDir, splitFile
+      
       use PT_ModProc, ONLY: iProc
+      
+      character(len=*), parameter :: OutputDir = 'PT/IO2/'
+      character(len=*), parameter :: SplitFile = 'split_levels.dat'
+
       real :: dLogEsplit
       ! Loop variable:
       integer :: iLev
@@ -197,13 +177,14 @@ contains
 
    end subroutine init_split_grid
    !============================================================================
-   subroutine check_boundary_conditions(IsOutside)
+   subroutine check_boundary_conditions(iParticle, IsOutside)
+      integer, intent(in) :: iParticle
       logical, intent(out) :: IsOutside
 
       IsOutside = .False.
-      if(Particle_V(R_) < rMin .or. Particle_V(R_) > rMax) IsOutside = .True.
-      if(Particle_V(LagrCoord_) < 1.0 .or. Particle_V(LagrCoord_) > nS-1.0) IsOutside = .True.
-      if((Particle_V(Time_) + Particle_V(TimeStep_)) > tMax) IsOutside = .True.
+      if(Particle_V(iParticle, R_) < rMin .or. Particle_V(iParticle, R_) > rMax) IsOutside = .True.
+      if(Particle_V(iParticle, LagrCoord_) < 2.0 .or. Particle_V(iParticle, LagrCoord_) > nS-2.0) IsOutside = .True.
+      if((Particle_V(iParticle, Time_) + Particle_V(iParticle, TimeStep_)) > tMax) IsOutside = .True.
 
    end subroutine check_boundary_conditions
    !============================================================================
@@ -245,74 +226,6 @@ contains
                cProtonRestEnergy
 
    end subroutine momentum_to_energy
-   !=============================================================================
-   subroutine debug_particle(Message)
-      character(len = *), intent(in) :: Message
-
-      write(*,*) '#', repeat('-', 25), '#'
-      write(*,*) Message
-      write(*, '(A, F14.2, A)') '  Time: ', Particle_V(Time_), ' s' 
-      write(*, '(A, F18.8, A)') '  Timestep: ', Particle_V(TimeStep_), ' s'
-      write(*, '(A, F10.2, A)') '  Energy: ', Particle_V(Energy_)/ckeV, ' keV'
-      write(*, '(A, F16.2, A)') '  R: ', Particle_V(R_)/cRsun, ' Rs'
-      write(*, '(A, F11.2, A)') '  LagrCoord: ', Particle_V(LagrCoord_)
-      write(*,*) '#', repeat('-', 25), '#'
-
-   end subroutine debug_particle
-   !=============================================================================
-   subroutine save_particle_trajectory(iProc, n)
-      integer, intent(in) :: iProc, n
-      integer :: FileUID
-      character(len = 20) :: iProcStr, nStr
-
-      FileUID = iProc + iProc * n
-      write(iProcStr, *) iProc
-      write(nStr, *) n
-      iProcStr = adjustl(iProcStr)
-      nStr = adjustl(nStr)
-
-      open(FileUID, file = 'PT/IO2/particle_'//trim(iProcStr)//'_'//trim(nStr)//'.dat', &
-           status = 'unknown', position = 'append')
-      write(FileUID, *) Particle_V(Time_), Particle_V(TimeStep_), &
-                        Particle_V(Energy_) / ckeV, Particle_V(R_) /cRsun, &
-                        Particle_V(LagrCoord_)
-      close(FileUID)
-
-   end subroutine save_particle_trajectory
-   !=============================================================================
-   subroutine save_initial_state(iProc)
-      integer, intent(in) :: iProc
-      integer :: FileUID
-      character(len = 20) :: iProcStr, nStr
-
-      FileUID = iProc
-      write(iProcStr, *) iProc
-      iProcStr = adjustl(iProcStr)
-
-      open(FileUID, file = 'PT/IO2/initial_state_'//trim(iProcStr)//'.dat', &
-           status = 'unknown', position = 'append')
-      write(FileUID, *) Particle_V(Time_), Particle_V(TimeStep_), &
-                        Particle_V(Energy_) / ckeV, Particle_V(R_) /cRsun, &
-                        Particle_V(LagrCoord_)
-      close(FileUID)
-   end subroutine save_initial_state
-   !=============================================================================
-   subroutine save_final_state(iProc)
-      integer, intent(in) :: iProc
-      integer :: FileUID
-      character(len = 20) :: iProcStr, nStr
-
-      FileUID = iProc
-      write(iProcStr, *) iProc
-      iProcStr = adjustl(iProcStr)
-
-      open(FileUID, file = 'PT/IO2/final_state_'//trim(iProcStr)//'.dat', &
-           status = 'unknown', position = 'append')
-      write(FileUID, *) Particle_V(Time_), Particle_V(TimeStep_), &
-                        Particle_V(Energy_) / ckeV, Particle_V(R_) /cRsun, &
-                        Particle_V(LagrCoord_)
-      close(FileUID)
-   end subroutine save_final_state
    !=============================================================================
    end module PT_ModParticle
    !=============================================================================

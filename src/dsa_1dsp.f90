@@ -37,8 +37,8 @@ program dsa_1D_spherical
    use PT_ModProc, ONLY: iProc, nProc, iComm, iError
    use PT_ModParticle
 
-   use PT_ModFieldline, ONLY: read_fieldline
-   ! use PT_ModTestFieldline, ONLY: read_fieldline
+   ! use PT_ModFieldline, ONLY: read_fieldline, tMax
+   use PT_ModTestFieldline, ONLY: read_fieldline, tMax
 
    use PT_ModRandom, ONLY: init_random_seed, read_seed_file, &
                            save_seed, UseInputSeedFile
@@ -54,8 +54,10 @@ program dsa_1D_spherical
 
    integer :: n, lev, iSplit, iSplitCounter
    integer, allocatable :: lev_save_split(:)
-   real :: weight
    real, allocatable ::  t_save_split(:), p_save_split(:), lagr_save_split(:)
+   
+   real :: SimTime = 0.0, tStepMax
+   real :: SimTimeStep = 120.0
 
    character(len = 20) :: iProcStr
    integer :: counter = 0
@@ -87,6 +89,7 @@ program dsa_1D_spherical
       call PT_read_param  ! Identical to SP_set_param('READ')
       call PT_check       ! Similar to SP_set_param('CHECK'), but see init_time
 
+      ! Use input seed file or randomize PRNG seed
       if(UseInputSeedFile) then
          call read_seed_file()
       else
@@ -124,76 +127,37 @@ program dsa_1D_spherical
       
       ! Initialize time which is used to check CPU time
       CpuTimeStart = MPI_WTIME()
-
-      ! particle loop
+      call initialize_particles()
       do n = 1, nParticlePerProc
+         call increase_total_weight(Particle_V(n, Weight_))
+      end do
 
-         iSplit = 0
-         SPLITLOOP: do
-            if(iSplit.eq.0) then
+      do while(SimTime.le.tMax) ! SWMF time loop  
+         tStepMax = SimTime + SimTimeStep
+         ! particle loop
+         do n = 1, nParticlePerProc ! particle loop
+            
+            do while(Particle_V(n, Time_).le.tStepMax) ! particle time loop
+               call advance_particle(n)
+               call check_boundary_conditions(n, IsOutside)
 
-               call initialize_particle
-               ! if(n.eq.1) call save_particle_trajectory(iProc, n)
-               lev = 1
-               iSplitCounter = 0
+               ! bin particle in space/time/momentum
+               call bin_particle(Particle_V(n, LagrCoord_), &
+                                 Particle_V(n, Time_), &
+                                 Particle_V(n, Energy_), &
+                                 Particle_V(n, Weight_))
+               if(IsOutside) Particle_V(n, Time_) = tMax*2.0
+            end do
 
-            else
-               iSplitCounter = iSplitCounter + 1
 
-               if(iSplitCounter > iSplit) EXIT SPLITLOOP
+            if(IsOutside) cycle
 
-               call init_split_particle(t_save_split(iSplitCounter), &
-                                        lagr_save_split(iSplitCounter), &
-                                        p_save_split(iSplitCounter), lev)
-               
-            end if
-            ! time loop
-            call increase_total_weight(Particle_V(Weight_))
-            ! call save_initial_state(iProc)
-            TIMELOOP: do
-               call advance_particle()
 
-               ! if(n.eq.1) call save_particle_trajectory(iProc, n)
-
-               ! Checks particle position, lagrange coordinate, and time
-               call check_boundary_conditions(IsOutside)               
-               if(IsOutside) then 
-                  ! call debug_particle('')
-                  ! call save_final_state(iProc)
-                  EXIT TIMELOOP
-               end if
-
-               call bin_particle(Particle_V(LagrCoord_), Particle_V(Time_), &
-                                 Particle_V(Energy_), Particle_V(Weight_))
-
-               ! calculate cpu time
-               CpuTime =  mpi_wtime() - CpuTimeStart
-               if (CpuTime > CpuTimeMax)then
-                  write(*,*) 'CPU Max Time Reached: iProc, N_completed: ', iProc, n-1
-                  call save_output
-                  call MPI_finalize(iError)
-                  stop
-               end if
-               
-               ! particle splitting
-               if(UseSplit)then
-                  if(Particle_V(Energy_) > eSplitLev_I(lev).and.lev<nSplitLev &
-                        .and.iSplit <= nSplitMax)then
-                     lev=lev+1
-                     iSplit=iSplit+1
-                     t_save_split(iSplit) = Particle_V(Time_)
-                     p_save_split(iSplit) = Particle_V(Momentum_)
-                     lagr_save_split(iSplit) = Particle_V(LagrCoord_)
-                     lev_save_split(iSplit) = lev
-                  end if
-               end if
-            end do TIMELOOP
-           
-            if( lev==1 ) EXIT SPLITLOOP ! no particles were split, exit
-            ! need to go back and do all split particles
-         end do SPLITLOOP
-
-      end do ! PARTICLE LOOP 
+            ! Missing CPU time check
+            ! Missing particle splitting 
+         end do ! particle loop
+         SimTime = tStepMax
+      end do ! time loop
 
       if(IsLastRead)EXIT SESSIONLOOP
 
@@ -207,6 +171,7 @@ program dsa_1D_spherical
    ! finialize mpi routine
    call save_output
    call MPI_finalize(iError)
+   write(*,*) mpi_wtime() - CpuTimeStart
    
 end program dsa_1D_spherical
 !==============================================================================
