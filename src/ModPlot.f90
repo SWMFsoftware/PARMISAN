@@ -113,17 +113,9 @@ contains
   end subroutine increase_total_weight
   !============================================================================
   subroutine bin_particle(LagrCoord, Time, Energy, Weight)
-    ! Time and energy, to determine the bin to put the contribution:
+    ! Bin in time, energy, and location
     real, intent(in) :: LagrCoord, Time, Energy, Weight
     integer :: iL, iE, iT, i
-
-    ! iT = -1
-
-    !do i = 1, nSaveTimes
-    !    if(Time.le.Time_I(i) + timeWindow.and.Time.gt.Time_I(i) - timeWindow) iT = i
-    !end do
-
-    !if(iT.eq.-1) return
 
     if(LagrCoord.lt.LagrBin_I(1).or.LagrCoord.ge.LagrBin_I(nLagrBins+1)) return
     if(Time.lt.Time_I(1).or.Time.ge.Time_I(nSaveTimes+1)) return
@@ -139,7 +131,7 @@ contains
   subroutine calculate_distribution_function
     ! Convert counts (sum of weights) in bin to distribution function
     ! divide by total weight, divide by bin widths, multiply by conversion factor
-    ! Bins are momentum and lagrcoord taken at a snapshot in time
+    ! Bins are momentum, time, and lagrcoord
     ! Conversion factor is F = dS/B * f. Solved for F, want f.
     
     real :: dP, p1, p2
@@ -155,9 +147,8 @@ contains
         dTime = Time_I(iT+1) - Time_I(iT)
         do iL = 1, nLagrBins
           dLagr = LagrBin_I(iL+1) - LagrBin_I(iL)
-          factor = TotalWeight * dLagr * dP * dTime !timeWindow*2.0
-          call compute_conversion_factor(Time_I(iT), LagrBin_I(iL)+0.5*dLagr, conversion)
-          ! Missing multiplication by timestep - not sure how to do this with adaptive stepping
+          factor = TotalWeight * dLagr * dP * dTime
+          call compute_conversion_factor(Time_I(iT)+0.5*dTime, LagrBin_I(iL)+0.5*dLagr, conversion)
           Counts_III(iT, iE, iL) = Counts_III(iT, iE, iL) * conversion / factor
         end do
       end do
@@ -194,7 +185,7 @@ contains
       open(901,file=OutputDir//trim(outputFile),status='unknown',action="READWRITE")
 
       do iLagr = 1, nLagrBins
-        write(901,'(1000e15.6)') Counts_III(iTime, :, iLagr) 
+        write(901,'(2000e15.6)') Counts_III(iTime, :, iLagr) 
       end do
 
       close(901)

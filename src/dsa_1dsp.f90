@@ -1,18 +1,13 @@
 program dsa_1D_spherical
 
-   ! solves the Parker transport equation using stochastic integration method
+   ! Solves the Parker transport equation using stochastic integration method
    ! 1D lagrangian frame along single IMF line
    ! solves acceleration and transport
    !
-   ! particle splitting is used
-   !
-   ! Can solve equivalent Ito or Stratonovich using RK2 (or Milstein for Ito) approach
-   !
+   ! Particle splitting is used
+   ! Uses either Euler-Maruyama or Milstein method 
    ! Particles are injected uniformly in r
-   !
    ! Particles can be injected at constant energy (default) or from 1/v^5 distribution
-   !
-   ! this is an mpi version
    use ModKind
    use ModMpi
    use ModReadParam, ONLY: read_file, read_init
@@ -48,19 +43,20 @@ program dsa_1D_spherical
    integer      :: iSession = 1
    real(Real8_) :: CpuTimeStart, CpuTime
    logical      :: IsFirstSession = .true.
-   logical      :: UseSplit = .false.
 
-   logical :: IsOutside
-
-   integer :: n, lev, iSplit, iSplitCounter
-   integer, allocatable :: lev_save_split(:)
-   real, allocatable ::  t_save_split(:), p_save_split(:), lagr_save_split(:)
+   logical :: IsOutside, DoSplit
+   ! particle loop variable
+   integer :: iParticle, nParticle
    
+   ! particle-splitting variables
+   integer :: lev, iSplit, iSplitCounter
+   
+   ! to be replaced by SWMF coupled variables
    real :: SimTime = 0.0, tStepMax
    real :: SimTimeStep = 120.0
 
    character(len = 20) :: iProcStr
-   integer :: counter = 0
+
    ! mpi initialization routines
    !----------------------------------------------------------------------------
    call MPI_INIT( iError )
@@ -113,11 +109,6 @@ program dsa_1D_spherical
          ! set either in coupling or in reading the MHD data from file.
          ! definititions, simulation paramters (cgs units)
 
-         if(.not.allocated(lev_save_split)) allocate(lev_save_split(1:nSplitMax))
-         if(.not.allocated(t_save_split)) allocate(t_save_split(1:nSplitMax))
-         if(.not.allocated(lagr_save_split)) allocate(lagr_save_split(1:nSplitMax))
-         if(.not.allocated(p_save_split)) allocate(p_save_split(1:nSplitMax))
-
          call init_split_grid
    
          ! set up bin matrix
@@ -127,34 +118,54 @@ program dsa_1D_spherical
       
       ! Initialize time which is used to check CPU time
       CpuTimeStart = MPI_WTIME()
+
+      ! init all particles
       call initialize_particles()
-      do n = 1, nParticlePerProc
-         call increase_total_weight(Particle_V(n, Weight_))
+
+      ! sum total weight 
+      ! old function from previous loop structure 
+      ! can be improved
+      do iParticle = 1, nParticlePerProc
+         call increase_total_weight(Particle_V(iParticle, Weight_))
       end do
 
-      do while(SimTime.le.tMax) ! SWMF time loop  
+      ! initial number of particles
+      nParticle = nParticlePerProc
+
+      ! SWMF time loop 
+      do while(SimTime.le.tMax)  
+         ! upper bound of current time step
          tStepMax = SimTime + SimTimeStep
          ! particle loop
-         do n = 1, nParticlePerProc ! particle loop
-            
-            do while(Particle_V(n, Time_).le.tStepMax) ! particle time loop
-               call advance_particle(n)
-               call check_boundary_conditions(n, IsOutside)
+         do iParticle = 1, nParticle
+            ! particle time loop
+            do while(Particle_V(iParticle, Time_).le.tStepMax) 
+               
+               call advance_particle(iParticle)
 
                ! bin particle in space/time/momentum
-               call bin_particle(Particle_V(n, LagrCoord_), &
-                                 Particle_V(n, Time_), &
-                                 Particle_V(n, Energy_), &
-                                 Particle_V(n, Weight_))
-               if(IsOutside) Particle_V(n, Time_) = tMax*2.0
-            end do
+               call bin_particle(Particle_V(iParticle, LagrCoord_), &
+                                 Particle_V(iParticle, Time_), &
+                                 Particle_V(iParticle, Energy_), &
+                                 Particle_V(iParticle, Weight_))
+               ! check if particle left spatial boundaries
+               call check_boundary_conditions(iParticle, IsOutside)
+               ! if particle leaves spatial boundary set time to large number
+               if(IsOutside) Particle_V(iParticle, Time_) = tMax*2.0
 
+               ! particle splitting:
+               ! total weight is conserved
+               if(UseSplit) then
+                  call check_split(iParticle, DoSplit)
+                  if(DoSplit) then          
+                     call split_particle(iParticle, nParticle)
+                     nParticle = nParticle + 1
+                  end if
+               end if
 
-            if(IsOutside) cycle
+            end do ! particle time loop
 
-
-            ! Missing CPU time check
-            ! Missing particle splitting 
+            ! Missing CPU time check - what loop to put this in?
          end do ! particle loop
          SimTime = tStepMax
       end do ! time loop
@@ -171,7 +182,6 @@ program dsa_1D_spherical
    ! finialize mpi routine
    call save_output
    call MPI_finalize(iError)
-   write(*,*) mpi_wtime() - CpuTimeStart
    
 end program dsa_1D_spherical
 !==============================================================================

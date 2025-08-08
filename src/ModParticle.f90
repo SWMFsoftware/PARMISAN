@@ -24,9 +24,9 @@ module PT_ModParticle
                          R_            = 5,  &
                          Energy_       = 6,  &
                          Weight_       = 7,  &
-                         ROld_         = 8,  &
-                         LagrCoordOld_ = 9,  &
-                         MomentumOld_  = 10, &
+                         ParentIndex_  = 8,  &
+                         NumChildren_  = 9,  &
+                         SplitLevel_   = 10, &
                          nVar          = 10
 
    real         :: E0             ! = 10.0*keV
@@ -34,6 +34,7 @@ module PT_ModParticle
    real         :: eSplitLevelMin ! = 1.d0*MeV      ! energy of first split level
    real         :: eSplitLevelMax ! = 20000.d0*MeV  ! energy of last split level
    real, allocatable :: eSplitLev_I(:)
+   logical :: UseSplit
 contains
    !============================================================================
    subroutine read_param(NameCommand)
@@ -46,8 +47,9 @@ contains
       !--------------------------------------------------------------------------
       select case(NameCommand)
       case('#PARTICLE')
-         call read_var('nParticlePerProc', nParticlePerProc )
+         call read_var('nParticlePerProc', nParticlePerProc)
          call read_var('initialEnergy', E0)
+         call read_var('UseSplit', UseSplit)
          call read_var('nSplitLev', nSplitLev)
          call read_var('nSplitMax', nSplitMax)
          call read_var('eSplitLevelMin', eSplitLevelMin)
@@ -65,9 +67,14 @@ contains
    end subroutine read_param
    !============================================================================
    subroutine initialize_particles()
-      integer :: i
+      integer :: i, TotalParticles
       
-      if(.not.allocated(Particle_V)) allocate(Particle_V(1:nParticlePerProc, 1:nVar)) ! modparticle init function?
+      if(UseSplit) then
+         TotalParticles = nParticlePerProc + nParticlePerProc*nSplitMax
+         allocate(Particle_V(1:TotalParticles, 1:nVar))
+      else
+         allocate(Particle_V(1:nParticlePerProc, 1:nVar))
+      end if
 
       ! Get particle initial time, radial distance, and distance along fieldline    
       do i = 1, nParticlePerProc
@@ -76,49 +83,73 @@ contains
          call energy_to_momentum(Particle_V(i, Energy_), Particle_V(i, Momentum_))
          ! Get weight: T*rho
          ! TODO: check to see if rho is proton only, if not, need number density of protons
+         ! RIGHT NOW WEIGHT IS SET TO 1
          call compute_weight(Particle_V(i, Time_), Particle_V(i, LagrCoord_), Particle_V(i, Weight_))
-         call save_state(i)
+
+         ! particle splitting variables
+         ! parent index = index of first parent (to track and limit maximum number of splits)
+         ! numchildren = number of child  particles (to track and limit maximum number of splits)
+         ! splitlevel = number of splits removed from first parent (to track next split)
+         Particle_V(i, ParentIndex_) = i
+         Particle_V(i, NumChildren_) = 0
+         Particle_V(i, SplitLevel_) = 1
       end do
 
    end subroutine initialize_particles
    !============================================================================
-   ! subroutine init_split_particle(Time, LagrCoord, Momentum, splitLev)
-
-         ! real, intent(in) :: Time, LagrCoord, Momentum
-         ! integer, intent(in) :: splitLev
-
-         ! Particle_V(Time_) = Time
-         ! Particle_V(LagrCoord_) = LagrCoord
-         ! Particle_V(Momentum_) = Momentum
-
-         ! call momentum_to_energy(Momentum, Particle_V(Energy_))
-
-         ! call get_particle_location(Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(R_))
-
-         ! call compute_weight(Particle_V(Time_), Particle_V(LagrCoord_), Particle_V(Weight_))
-         ! Particle_V(Weight_) = Particle_V(Weight_)*(2.d0**(-real(splitLev-1)))
-
-         ! call save_state()
-
-   ! end subroutine init_split_particle
-   !============================================================================
-   subroutine save_state(iParticle)
+   subroutine check_split(iParticle, DoSplit)
       integer, intent(in) :: iParticle
+      logical, intent(out) :: DoSplit
 
-      Particle_V(iParticle, ROld_) = Particle_V(iParticle, R_)
-      Particle_V(iParticle, LagrCoordOld_) = Particle_V(iParticle, LagrCoord_)
-      Particle_V(iParticle, MomentumOld_) = Particle_V(iParticle, Momentum_)
+      integer :: SplitLevel, ParentNumChildren
 
-   end subroutine save_state
+      DoSplit = .false.
+      ! current energy threshold index of splitting
+      SplitLevel = int(Particle_V(iParticle, SplitLevel_))
+      ! total number of children from first parent
+      ParentNumChildren = int(Particle_V(Particle_V(iParticle, ParentIndex_), NumChildren_))
+      
+      ! if particle crosses next energy threshold
+      ! if max split energy threshold has not yet been reached
+      ! if max child particles per first parent has not yet been reached
+      if(Particle_V(iParticle, Energy_).gt.eSplitLev_I(SplitLevel) &
+         .and.SplitLevel.lt.nSplitLev &
+         .and.ParentNumChildren.le.nSplitMax) DoSplit = .true.
+
+   end subroutine check_split
+   !============================================================================
+   subroutine split_particle(iParticle, nParticle)
+
+      ! index of particle being split, total number of current particles in simulation
+      integer, intent(in) :: iParticle, nParticle
+      integer :: ParentIndex
+      integer :: SplitInd
+
+      ! index of newly split particle
+      SplitInd = nParticle + 1
+      ! index of first parent
+      ParentIndex = int(Particle_V(iParticle, ParentIndex_))
+      
+      ! increase split level of current particle
+      Particle_V(iParticle, SplitLevel_) = Particle_V(iParticle, SplitLevel_) + 1
+      ! increase total number of children from first parent
+      Particle_V(ParentIndex, NumChildren_) = Particle_V(ParentIndex, NumChildren_) + 1
+
+      ! Copy particle information
+      Particle_V(SplitInd, :) = Particle_V(iParticle, :)
+
+      ! adjust weights of split particles
+      ! conserves total weight
+      Particle_V(SplitInd, Weight_) = Particle_V(SplitInd, Weight_) * 0.5
+      Particle_V(iParticle, Weight_) = Particle_V(iParticle, Weight_) * 0.5
+
+   end subroutine split_particle
    !============================================================================
    subroutine advance_particle(iParticle)
       integer, intent(in) :: iParticle
 
       ! Vectors solved by SDE
       real :: XOld(nDim), XNew(nDim)
-      
-      ! Save particle's current position as previous position
-      call save_state(iParticle)
 
       ! Equation advances lagrcoord and p^3/3 not p
       XOld(LagrCoord_) = Particle_V(iParticle, LagrCoord_)
@@ -137,7 +168,8 @@ contains
       Particle_V(iParticle, Time_) = Particle_V(iParticle, Time_) + Particle_V(iParticle, TimeStep_)
 
       ! reflection at inner boundary
-      if(Particle_V(iParticle, LagrCoord_) < 2.0) Particle_V(iParticle, LagrCoord_) = 4.0 - Particle_V(iParticle, LagrCoord_)
+      ! otherwise get_particle_location will crash if LagrCoord < 1 when using MFLAMPA
+      !if(Particle_V(iParticle, LagrCoord_) < 2.0) Particle_V(iParticle, LagrCoord_) = 4.0 - Particle_V(iParticle, LagrCoord_)
 
       ! Update radial distance (R)
       call get_particle_location(Particle_V(iParticle, Time_), Particle_V(iParticle, LagrCoord_), Particle_V(iParticle, R_))

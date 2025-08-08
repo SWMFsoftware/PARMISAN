@@ -1,4 +1,6 @@
 module PT_ModSolver
+    ! Written by Alex Shane
+    ! Multiple solvers for SDEs
 
     use PT_ModRandom, ONLY: get_random_normal
     use ModKind

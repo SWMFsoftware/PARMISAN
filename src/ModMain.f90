@@ -42,9 +42,12 @@ contains
     use PT_ModReadMHData,    ONLY: read_param_mhdata     => read_param
     use PT_ModTime,          ONLY: read_param_time       => read_param
     use PT_ModPlot,          ONLY: read_param_plot       => read_param
-    use PT_ModParticle,      ONLY: read_param_particle   => read_param
     use PT_ModRandom,        ONLY: read_param_random     => read_param
+   !  use PT_ModParticle,      ONLY: read_param_particle   => read_param
+   !  use PT_ModFieldline,     ONLY: read_param_fieldline  => read_param
+    use PT_ModParticle,      ONLY: read_param_particle   => read_param
     use PT_ModFieldline,     ONLY: read_param_fieldline  => read_param
+
     ! Read input parameters for PT component
     use ModReadParam, ONLY: &
          read_var, read_line, read_command, i_session_read, read_echo_set
@@ -121,10 +124,6 @@ contains
        case("#INPUTSEED")
          call read_param_random(NameCommand)
        case("#BC")
-         call read_param_fieldline(NameCommand)
-       case("#DIFFUSION")
-         call read_param_fieldline(NameCommand)
-       case("#SCHEME")
          call read_param_fieldline(NameCommand)
        case default
           call CON_stop(NameSub//': Unknown command '//NameCommand)
