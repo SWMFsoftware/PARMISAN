@@ -2,36 +2,32 @@
 T			DoEcho
 
 #CPUTIMEMAX
-28440			CpuTimeMax # 28440
+28440       CpuTimeMax # 28440
 
 #PLOT
-100         NumLocations # number of output files: each an array of (nt x nE)
-50.0        rBinMin     # [Rs]
-215.0       rBinMax     # [Rs]
-10          LagrBinSize 
-100	        NumTimes
-0.0         tBinMin     # [hr]
-40          tBinMax     # [hr]
-120.0       TimeBinSize # [s]
+500         nLagrBins    # number of output files: each an array of (nt x nE)
+0.0         lagrBinMin   # [Rs]
+3600.0      lagrBinMax   # [Rs]
+500        nSaveTimes
+0.0         tSaveMin    # [hr]
+1.0         tSaveMax    # [hr]
 200         nEnergyBin
-1.0         eBinMin     # [keV]
-1e7         eBinMax     # [keV]
-
-#SCHEME
-S           Scheme # I = Ito, S = Stratonovich
+1.0         eBinMin    # [keV]
+1e7         eBinMax    # [keV]
 
 #BC
-1.2             rMin # [Rsun]
+1.1             rMin # [Rsun]
 250.0           rMax # [Rsun]
-153700.0        tMax # [s]
+3600.0          tMax # [s]
 1.3             rMinInject # [Rsun]
-150.0            rMaxInject # [Rsun]
-0.0001          TimeStepFactor # (default = 0.0001)
+50.0            rMaxInject # [Rsun]
+0.01            TimeStepFactor # (default = 0.0001)
 10.0            MaxTimeStep # [s]
 
 #PARTICLE
-1000            nParticlePerProc  
+1000            nParticlePerProc
 10.0            initialEnergy  # [keV]
+T               UseSplit
 40              nSplitLev      # number of energy thresholds where splitting occurs
 80              nSplitMax      # maximum number of split particles per parent
 1.0             eSplitLevelMin # [MeV]
