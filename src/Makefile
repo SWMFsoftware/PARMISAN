@@ -95,26 +95,6 @@ ${DSA_EXE}: dsa_1dsp.o
 		${LflagMpi}
 	rm -rf Tmp_
 
-TestParmisan.o: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
-
-TP_EXE = ${BINDIR}/TestParmisan.exe
-
-TestParmisan:
-	make ${TP_EXE}
-	@echo ' '
-	@echo Program TestParmisan has been brought up to date.
-	@echo ' '
-
-${TP_EXE}: TestParmisan.o
-	rm -rf Tmp_; mkdir Tmp_
-	cd Tmp_; \
-		ar -x ../${MY_LIB}; \
-		ar -x ${LIBTIMING}; \
-		ar -x ${LIBSHARE}
-	${LINK.f90} -o ${TP_EXE} TestParmisan.o Tmp_/*.o \
-		${LflagMpi}
-	rm -rf Tmp_
-
 clean: cleanfiles
 
 distclean: clean
