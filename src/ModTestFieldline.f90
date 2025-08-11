@@ -2,17 +2,19 @@ module PT_ModTestFieldline
     ! Written by Alex Shane
     ! Numerical shock test fieldline
     ! Simulates 1D shock with constant upstream/downstream profiles
-    ! Width of shock and compression ratio can be varied
     ! Magnetic field assumed to be constant
+    ! Shock moves at unit speed, upstream flow is stationary, downstream flow can be varied
 
     use ModKind
     use ModMpi
     use PT_ModConst
+    use PT_ModProc, only : iProc
 
     implicit none
 
     SAVE
 
+    character(len=*), parameter :: OutputDir = 'PT/IO2/'
     real, parameter :: tMin = 0.0, tMax = 3600.0    ! seconds
     real, parameter :: rMin = -100.0, rMax = 3700.0 ! lagrcoord bounds (r = lagrcoord)
     real, parameter :: Dxx0 = 10.0  ! either constant or Dxx at injection momentum
@@ -24,12 +26,51 @@ module PT_ModTestFieldline
                                     ! this effectively changes the width of the shock = 2*dShock + 1
                                     ! 1 = acceleration region (constant)
     real, parameter :: velDownstream = 0.75 ! downstream speed (U2) 1-U2 = 1 / compressionRatio
+                                            ! assumes upstream flow is 0 or -1 in shock frame
 
 contains
     !=====================================================================!
     subroutine read_fieldline
-        ! no data needs to be read in
-        write(*,*) "Running numerical test"
+        ! No data needs to read in for test
+        ! This will output generic Pnorm array, steady-state distribution function,
+        ! and the theoretical acceleration time.
+        ! This is only true for Dxx = constant!
+        integer :: i
+        integer :: NumPNorm= 200
+
+        real :: PnormMin = 0.0, PnormMax = 4.0 ! log10
+        real :: dPNorm, PowerLaw, U1, U2
+        real, allocatable :: Pnorm(:), f(:), Tacc(:)
+
+
+        if(iProc.eq.0) then
+            write(*,*) "Running numerical test"
+            
+            allocate(Pnorm(1:NumPNorm))
+            allocate(f(1:NumPNorm))
+            allocate(Tacc(1:NumPNorm))
+            
+            U1 = -1.0 ! upstream speed in shock frame
+            U2 = velDownstream - 1.0 ! downstream speed in shock frame
+            PowerLaw = -3.0 * U1 / (U1 - U2)
+            dPNorm = (PnormMax - PnormMin) / (NumPNorm-1)
+            do i = 1, NumPNorm
+                Pnorm(i) = 10**(PnormMin + dPNorm * (i-1) )
+                f(i) = Pnorm(i) ** PowerLaw
+                Tacc(i) = 3.0 * Dxx0 * (U1**-1.0 + U2**-1.0) / (U1 - U2) * log(Pnorm(i))
+            end do
+
+            open(801,file=OutputDir//'pnorm.dat',status='unknown')
+            write(801,'(1000e15.6)') Pnorm
+            close(801)
+            open(801,file=OutputDir//'steadystate_f.dat',status='unknown')
+            write(801,'(1000e15.6)') f
+            close(801)
+            open(801,file=OutputDir//'acceleration_time.dat',status='unknown')
+            write(801,'(1000e15.6)') Tacc
+            close(801)
+
+        end if
     end subroutine read_fieldline
     !=====================================================================!
     subroutine get_particle_location(Time, LagrCoord, S)
@@ -178,8 +219,8 @@ contains
         call random_number(RandomUniform)
   
         LagrCoord = tMin + (tMax - tMin) * RandomUniform
-        call get_shock_arrival(LagrCoord, Time)
-        Time = LagrCoord - 2.0 * dShock
+        ! call get_shock_arrival(LagrCoord, Time)
+        Time = LagrCoord - 2.0 * dShock ! inject particles upstream
         call get_particle_location(Time, LagrCoord, S)
   
     end subroutine get_random_shock_location
@@ -200,29 +241,5 @@ contains
         call get_ds(Time, LagrCoord, dS)
         ConversionFactor = 1.0 / dS
     end subroutine compute_conversion_factor
-    !=============================================================================
-    subroutine save_location_properties(iProc, Time, LagrCoord, Momentum)
-        integer, intent(in) :: iProc
-        real, intent(in) :: Time, LagrCoord, Momentum
-        integer :: FileUID
-
-        character(len = 20) :: iProcStr, nStr
-
-        real :: rho, Dxx, dS
-
-        call get_ds(Time, LagrCoord, dS)
-        call get_dxx(Time, Momentum, Dxx)
-        call get_rho(Time, LagrCoord, rho)
-
-        FileUID = iProc
-        write(iProcStr, *) iProc
-        iProcStr = adjustl(iProcStr)
-
-        open(FileUID, file = 'PT/IO2/location_'//trim(iProcStr)//'.dat', &
-            status = 'unknown', position = 'append')
-        write(FileUID, *) Time, LagrCoord, Momentum, rho, Dxx, dS
-        close(FileUID)
-
-    end subroutine save_location_properties
-    !=====================================================================! 
+    !=====================================================================!
 end module PT_ModTestFieldline

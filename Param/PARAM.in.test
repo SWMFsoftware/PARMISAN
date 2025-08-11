@@ -8,7 +8,7 @@ T			DoEcho
 500         nLagrBins    # number of output files: each an array of (nt x nE)
 0.0         lagrBinMin   # [Rs]
 3600.0      lagrBinMax   # [Rs]
-500        nSaveTimes
+500         nSaveTimes
 0.0         tSaveMin    # [hr]
 1.0         tSaveMax    # [hr]
 200         nEnergyBin
@@ -25,7 +25,7 @@ T			DoEcho
 10.0            MaxTimeStep # [s]
 
 #PARTICLE
-1000            nParticlePerProc
+1               nParticlePerProc
 10.0            initialEnergy  # [keV]
 T               UseSplit
 40              nSplitLev      # number of energy thresholds where splitting occurs

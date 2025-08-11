@@ -55,7 +55,7 @@ program dsa_1D_spherical
    real :: SimTime = 0.0, tStepMax
    real :: SimTimeStep = 120.0
 
-   character(len = 20) :: iProcStr
+   character(len = 20) :: iProcStr ! for testing
 
    ! mpi initialization routines
    !----------------------------------------------------------------------------
@@ -95,6 +95,7 @@ program dsa_1D_spherical
       call save_seed() ! saves seed to file
 
       ! read in field line data
+      ! remove when coupled?
       ! sets tMin, tMax, rMin, rMax
       call read_fieldline()
       
@@ -136,6 +137,9 @@ program dsa_1D_spherical
       do while(SimTime.le.tMax)  
          ! upper bound of current time step
          tStepMax = SimTime + SimTimeStep
+         
+         ! update fieldline data goes here?
+
          ! particle loop
          do iParticle = 1, nParticle
             ! particle time loop

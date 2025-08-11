@@ -43,8 +43,6 @@ contains
     use PT_ModTime,          ONLY: read_param_time       => read_param
     use PT_ModPlot,          ONLY: read_param_plot       => read_param
     use PT_ModRandom,        ONLY: read_param_random     => read_param
-   !  use PT_ModParticle,      ONLY: read_param_particle   => read_param
-   !  use PT_ModFieldline,     ONLY: read_param_fieldline  => read_param
     use PT_ModParticle,      ONLY: read_param_particle   => read_param
     use PT_ModFieldline,     ONLY: read_param_fieldline  => read_param
 

@@ -4,6 +4,7 @@
 module PT_ModParticle
    use PT_ModConst   
    use ModKind
+   
    ! use PT_ModFieldline, ONLY: get_random_shock_location, compute_weight, &
    !                            get_particle_location, nS, rMin, rMax, tMax, nDim
    use PT_ModTestFieldline, ONLY: get_random_shock_location, compute_weight, &
@@ -112,8 +113,8 @@ contains
       ! if particle crosses next energy threshold
       ! if max split energy threshold has not yet been reached
       ! if max child particles per first parent has not yet been reached
-      if(Particle_V(iParticle, Energy_).gt.eSplitLev_I(SplitLevel) &
-         .and.SplitLevel.lt.nSplitLev &
+      if(SplitLevel.lt.nSplitLev.and. &
+         Particle_V(iParticle, Energy_).gt.eSplitLev_I(SplitLevel) &
          .and.ParentNumChildren.le.nSplitMax) DoSplit = .true.
 
    end subroutine check_split
@@ -167,9 +168,7 @@ contains
       ! Update particle time
       Particle_V(iParticle, Time_) = Particle_V(iParticle, Time_) + Particle_V(iParticle, TimeStep_)
 
-      ! reflection at inner boundary
-      ! otherwise get_particle_location will crash if LagrCoord < 1 when using MFLAMPA
-      !if(Particle_V(iParticle, LagrCoord_) < 2.0) Particle_V(iParticle, LagrCoord_) = 4.0 - Particle_V(iParticle, LagrCoord_)
+     
 
       ! Update radial distance (R)
       call get_particle_location(Particle_V(iParticle, Time_), Particle_V(iParticle, LagrCoord_), Particle_V(iParticle, R_))
@@ -212,8 +211,12 @@ contains
    subroutine check_boundary_conditions(iParticle, IsOutside)
       integer, intent(in) :: iParticle
       logical, intent(out) :: IsOutside
+      ! perhaps more appropriate in ModFieldline?
 
       IsOutside = .False.
+       ! reflection at inner boundary?
+      !if(Particle_V(iParticle, LagrCoord_) < 2.0) Particle_V(iParticle, LagrCoord_) = 4.0 - Particle_V(iParticle, LagrCoord_)
+      
       if(Particle_V(iParticle, R_) < rMin .or. Particle_V(iParticle, R_) > rMax) IsOutside = .True.
       if(Particle_V(iParticle, LagrCoord_) < 2.0 .or. Particle_V(iParticle, LagrCoord_) > nS-2.0) IsOutside = .True.
       if((Particle_V(iParticle, Time_) + Particle_V(iParticle, TimeStep_)) > tMax) IsOutside = .True.
