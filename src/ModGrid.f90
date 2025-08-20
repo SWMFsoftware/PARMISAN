@@ -13,7 +13,7 @@ module PT_ModGrid
 #endif
   use ModUtilities, ONLY: CON_stop
   use PT_ModSize,  ONLY: nVertexMax
-  use PT_ModProc,  ONLY: iProc
+  use PT_ModProc,  ONLY: nProc, iProc, iError
   use ModNumConst, ONLY: cTwoPi, cPi
 
   implicit none
@@ -31,33 +31,28 @@ module PT_ModGrid
 
   ! Coordinate system and geometry
   character(len=3), public :: TypeCoordSystem = 'HGR'
-  !
+
   ! Grid info
-  !
   ! Angular grid at origin surface
-  !
-  integer, public :: nLon  = 4
-  integer, public :: nLat  = 4
-  !
-  ! Total number of magnetic field lines on all PEs
-  ! (just a product of nLat * nLon)
+  integer, public :: nLat = 4  ! Number of lines along Lat grid
+  integer, public :: nLon = 4  ! Number of lines along Lon grid
+  integer:: iLatOffset = 0     ! Offset of line index along Lat grid
+  integer:: iLonOffset = 0     ! Offset of line index along Lon grid
+
+  ! Total number of magnetic field lines on all PEs (a product of nLat*nLon)
   integer, public :: nLineAll = 16
   !
   ! All nodes are enumerated. The last node number on the previous proc
   ! (iProc-1)
   ! equals (iProc*nLineAll)/nProc. Store this:
-  !
   integer, public :: iLineAll0
-  !
   ! The nodes on a given PE have node numbers ranging from iLineAll0 +1 to
   ! iNodeLast =((iProc + 1)*nLineAll)/nProc. The iLine index to enumerate
   ! lines on a given proc ranges from 1 to iNodeLast.
   ! nLine = nNodeLast - iLineAll0 is the number of
   ! lines (blocks) on this processor. For iLine=1:nLine
   ! iLineAll = iLineAll0+1:iNodeLast
-  !
   integer, public :: nLine
-  !
   ! Number of particles (vertexes, Lagrangian meshes) per line (line):
   integer, public,     pointer :: nVertex_B(:)
   !
@@ -207,24 +202,33 @@ contains
 
     character(len=*), parameter:: NameSub = 'init'
     !--------------------------------------------------------------------------
-    if(.not.DoInit)RETURN
+    if(.not.DoInit) RETURN
     DoInit = .false.
-    !
-    ! distribute nodes between processors
-    !
-    if(nLineAll < nProc)call CON_stop(NameSub//&
-         ': There are more processors than field lines')
-    iLineAll0 = (iProc*nLineAll)/nProc
-    iNodeLast = ((iProc+1)*nLineAll)/nProc
-    nLine = iNodeLast - iLineAll0
-    !
     ! check consistency
-    !
-    if(nLat <= 0 .or. nLon <= 0)&
+    if(nLat <= 0 .or. nLon <= 0) &
          call CON_stop(NameSub//': Origin surface grid is invalid')
-    !
+
+    ! distribute nodes between processors
+    if(nLineAll >= nProc) then
+       iLineAll0 = ( iProc   *nLineAll)/nProc
+       iNodeLast = ((iProc+1)*nLineAll)/nProc
+       nLine = iNodeLast-iLineAll0
+    else
+       ! there is one processor for each field line: we keep
+       ! iProc = 0~nLineAll-1 working and others for the last line
+       ! we also send the warning message for this over-request
+       nLine = 1
+       if(iProc < nLineAll) then
+          iLineAll0 = iProc
+       else
+          ! Some work/trial has been done, but just partially. One can refer
+          ! to the code version (915'th commit) on August 22, 2024.
+          iLineAll0 = nLineAll-1
+          call warn_more_proc
+          write(*,*) "Here we keep iProc's >", nLineAll, 'on the last line.'
+       end if
+    end if
     ! allocate data and grid containers
-    !
     allocate(iShock_IB(nShockParam, nLine), stat=iError)
     call check_allocate(iError, NameSub//'iShock_IB')
     iShock_IB = NoShock_
@@ -235,6 +239,7 @@ contains
 
     ! allocate the grid used in this model
     use ModUtilities,      ONLY: check_allocate
+    use PT_ModProc,   ONLY: warn_more_proc
     integer :: iVertex, iError
     character(len=*), parameter:: NameSub = 'init_stand_alone'
     !--------------------------------------------------------------------------
