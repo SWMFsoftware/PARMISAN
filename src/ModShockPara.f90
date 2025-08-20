@@ -2,7 +2,7 @@
   !  portions used with permission
   !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModShockPara
-  use PT_ModConst, ONLY: Rsun
+  use ModConst, ONLY: Rsun
   implicit none
   SAVE
   real :: Rmin
