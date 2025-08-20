@@ -108,7 +108,8 @@ contains
       ! current energy threshold index of splitting
       SplitLevel = int(Particle_V(iParticle, SplitLevel_))
       ! total number of children from first parent
-      ParentNumChildren = int(Particle_V(Particle_V(iParticle, ParentIndex_), NumChildren_))
+      ParentNumChildren = int(Particle_V(int(&
+           Particle_V(iParticle, ParentIndex_)), NumChildren_))
       
       ! if particle crosses next energy threshold
       ! if max split energy threshold has not yet been reached
