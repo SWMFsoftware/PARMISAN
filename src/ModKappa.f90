@@ -10,10 +10,10 @@ module PT_ModKappa
 contains
   !============================================================================
   subroutine set_kappa
-    use PT_ModConst, ONLY: AU
+    use ModConst, ONLY: cAU
     !--------------------------------------------------------------------------
 
-    K0 = 6.d+19 * ((Rmin/AU)**1.17)   ! K0 is the value at r=Rmin at E0
+    K0 = 6.d+19 * ((Rmin/cAU)**1.17)   ! K0 is the value at r=Rmin at E0
   end subroutine set_kappa
   !============================================================================
   subroutine getK(r, Momentum, Kappa, dKappaDr)
