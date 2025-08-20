@@ -7,9 +7,21 @@ module PT_ModProc
 
   ! MPI information
   !----------------------------------------------------------------------------
-  integer :: iComm = -1
-  integer :: iProc = -1
-  integer :: nProc = -1
+  ! For MPI communicators
+  integer :: iComm  = -1
+  ! Total processor number
+  integer :: nProc  = -1
+  ! Current processor index
+  integer :: iProc  = -1
+  ! Error message
   integer :: iError = -1
+contains
+  !============================================================================
+  subroutine warn_more_proc
+    ! Show WARNING message when there are more processors than field lines
+    !--------------------------------------------------------------------------
+    write(*,*) "WARNING: More processors than field lines."
+  end subroutine warn_more_proc
+  !============================================================================
 end module PT_ModProc
 !==============================================================================
