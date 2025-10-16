@@ -2,7 +2,7 @@
 ! portions used with permission
 !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModOriginPoints
-  use ModNumConst,       ONLY: cDegToRad
+  use PT_ModConst,       ONLY: cDegToRad
   implicit none
   ! Grid size, boundaries, coordinates
   ! Starting position of field lines in Rs

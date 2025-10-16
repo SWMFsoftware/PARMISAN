@@ -51,12 +51,12 @@ PARMISAN:
 NOMPI:
 	cd util/NOMPI/src; make LIB
 
-DSA:
+PTSA:
 	cd ${SHAREDIR}; ${MAKE} LIB
 	cd ${EMPIRICALCRDIR}; ${MAKE} LIB
 	cd ${TIMINGDIR}; ${MAKE} LIB
 	cd src; ${MAKE} LIB
-	cd src; ${MAKE} DSA
+	cd src; ${MAKE} PTSA
 
 COMPONENT = PT
 
@@ -74,8 +74,8 @@ rundir:
 		cp -f Param/PARAM.in.test ${RUNDIR}/PARAM.in; \
 		touch ${RUNDIR}/core; chmod 444 ${RUNDIR}/core; \
 		cd ${RUNDIR}; ln -s ${BINDIR}/${DEFAULT_EXE} .; \
-		ln -s ${BINDIR}/DSA.exe .; \
-		cp ${PTDIR}/seed.in seed.in ; \
+		ln -s ${BINDIR}/PTSA.exe .; \
+		cp ${PTDIR}/Param/seed.in.test seed.in ; \
 	fi);
 
 clean:  install

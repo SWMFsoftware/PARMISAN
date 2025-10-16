@@ -19,18 +19,21 @@ OBJECTS = \
 	ModPlot.o \
 	ModConst.o \
 	ModParticle.o \
-	ModShockPara.o \
-	ModKappa.o \
 	ModSolver.o \
 	ModRandom.o \
 	ModFieldline.o \
-	ModTestFieldline.o
+	ModShock.o \
+	ModUnit.o \
+	ModAdvance.o \
+	ModDistribution.o \
+	ModTestFieldline.o \
+	ModCreateSyntheticData.o 
 
 ModSize.f90: ModSize_orig.f90
 	cp -f ModSize_orig.f90 ModSize.f90
 
 # Object files not included into the library
-OBJECTS_EXE = PT_stand_alone.o
+# OBJECTS_EXE = PT_stand_alone.o
 
 EXE = ${BINDIR}/PARMISAN.exe
 
@@ -75,23 +78,23 @@ ${EXE}: ${OBJECTS_EXE}
 		${LflagMpi}
 	rm -rf Tmp_
 
-dsa_1dsp.o: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
+PT_stand_alone.o: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
 
-DSA_EXE = ${BINDIR}/DSA.exe
+PTSA_EXE = ${BINDIR}/PTSA.exe
 
-DSA:
-	make ${DSA_EXE}
+PTSA:
+	make ${PTSA_EXE}
 	@echo ' '
 	@echo Program DSA has been brought up to date.
 	@echo ' '
 
-${DSA_EXE}: dsa_1dsp.o
+${PTSA_EXE}: PT_stand_alone.o
 	rm -rf Tmp_; mkdir Tmp_
 	cd Tmp_; \
 		ar -x ../${MY_LIB}; \
 		ar -x ${LIBTIMING}; \
 		ar -x ${LIBSHARE}
-	${LINK.f90} -o ${DSA_EXE} dsa_1dsp.o Tmp_/*.o \
+	${LINK.f90} -o ${PTSA_EXE} PT_stand_alone.o Tmp_/*.o \
 		${LflagMpi}
 	rm -rf Tmp_
 

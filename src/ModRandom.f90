@@ -1,12 +1,12 @@
 module PT_ModRandom
     use ModMpi
     use ModKind
-    use PT_ModConst, ONLY: cFourPi
 
     implicit none
     
     logical, public :: UseInputSeedFile
 contains
+
 
     !============================================================================
     subroutine read_param(NameCommand)
@@ -25,6 +25,18 @@ contains
             call CON_stop(NameSub//' Unknown command '//NameCommand)
         end select
     end subroutine read_param
+    !============================================================================
+    subroutine init
+        ! Use input seed file or randomize PRNG seed
+        ! Should be inside IsFirstSession?
+        if(UseInputSeedFile) then
+            call read_seed_file()
+        else
+            call init_random_seed()
+        end if
+        call save_seed() ! saves seed to file
+        
+    end subroutine init
     !============================================================================
     subroutine init_random_seed()
         use PT_ModProc, ONLY: iProc, nProc
@@ -126,6 +138,7 @@ contains
     end subroutine save_seed
     !============================================================================
     subroutine get_random_normal(RandNormal1)
+        use PT_ModConst, ONLY: cTwoPi
         ! returns random number sampled from normal distribution
         ! with mean = 0 and std = 1
 
@@ -149,8 +162,8 @@ contains
         ! two independent random variable with standard normal distribution
         ! only need one for 1-D version
         
-        RandNormal1 = sqrt(-2.0*log(RandUniform1))*cos(0.5*cFourPi*RandUniform2)
-        ! RandNormal2 = sqrt(-2*log(RandUniform1))*sin(0.5*fourpi*RandUniform2)
+        RandNormal1 = sqrt(-2.0*log(RandUniform1))*cos(cTwoPi*RandUniform2)
+        ! RandNormal2 = sqrt(-2*log(RandUniform1))*sin(cTwoPi*RandUniform2)
 
     end subroutine get_random_normal
 !================================================================================

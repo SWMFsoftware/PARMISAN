@@ -3,58 +3,85 @@ module PT_ModSolver
     ! Multiple solvers for SDEs
 
     use PT_ModRandom, ONLY: get_random_normal
-    use ModKind
-    ! use PT_ModFieldline, ONLY:  get_sde_coeffs_euler, get_sde_coeffs_milstein, nDim
-    use PT_ModTestFieldline, ONLY: get_sde_coeffs_euler, get_sde_coeffs_milstein, nDim
-    
+    use PT_ModFieldline, ONLY: get_sde_coeffs_euler
+    use PT_ModSize, ONLY: nDim
+    use PT_ModTime, ONLY: PTTime
     implicit none
     SAVE
 
+    real :: TimeStepFactor, MaxTimeStep
+
 contains
     !==============================================================================
-    subroutine euler_sde(X_I, Time, Timestep, Xnew_I)
+   subroutine read_param(NameCommand)
+
+      use ModReadParam, ONLY: read_var
+      use ModUtilities, ONLY: CON_stop
+
+      character(len=*), intent(in):: NameCommand ! From PARAM.in
+      character(len=*), parameter:: NameSub = 'read_param'
+      !--------------------------------------------------------------------------
+      select case(NameCommand)
+      case('#SDE')
+         call read_var('TimeStepFactor', TimeStepFactor)
+         call read_var('MaxTimeStep', MaxTimeStep)
+      case default
+         call CON_stop(NameSub//' Unknown command '//NameCommand)
+      end select
+
+   end subroutine read_param
+   !============================================================================
+    subroutine euler_sde(X_I, tStepMax, Time, Timestep, Xnew_I)
         ! Solve SDE using Euler-Maruyama method
         ! Timestep is calculated inside get_sde_coeffs
-        real, intent(in) :: X_I(nDim), Time
-        real, intent(out) :: Timestep, Xnew_I(nDim)
+        real, intent(in)    :: X_I(nDim), tStepMax, Time
+        real, intent(out)   :: Timestep, Xnew_I(nDim)
 
         real :: Wk(nDim)
         real :: DriftCoeff(nDim), DiffCoeff(nDim)
         real :: RandomNormal
 
         call get_sde_coeffs_euler(X_I, Time, Timestep, DriftCoeff, DiffCoeff)
-            
+
+        ! Multiply by time step factor and limit maximum time step
+        Timestep = min(Timestep*TimeStepFactor, MaxTimeStep)
+
+        ! if timestep takes the particle past the maximum time - limit timestep
+        if(Time+Timestep.gt.tStepMax) Timestep = tStepMax - time
+
+        ! get random normal variables 
         call get_random_normal(RandomNormal)
         Wk(1) = sqrt(Timestep)*RandomNormal
-
         ! No momentum diffusion. 
         Wk(2) = 0.0
 
+        ! calculate changes to phase space variables
         Xnew_I = X_I + DriftCoeff * Timestep + DiffCoeff * Wk
 
     end subroutine euler_sde
     !==============================================================================
-    subroutine milstein_sde(X_I, Time, Timestep, Xnew_I)
+    ! subroutine milstein_sde(X_I, tStepMax, Time, Timestep, Xnew_I)
         ! Solve SDE using Milstein method
         ! Timestep is calculated inside get_sde_coeffs
-        real, intent(in) :: X_I(nDim), Time
-        real, intent(out) :: Timestep, Xnew_I(nDim)
+        ! real, intent(in) :: X_I(nDim), tStepMax, Time
+        ! real, intent(out) :: Timestep, Xnew_I(nDim)
 
-        real :: Wk(nDim)
-        real :: DriftCoeff(nDim), DiffCoeff(nDim), dDiffdX(nDim)
-        real :: RandomNormal
+        ! real :: Wk(nDim)
+        ! real :: DriftCoeff(nDim), DiffCoeff(nDim), dDiffdX(nDim)
+        ! real :: RandomNormal
 
-        call get_sde_coeffs_milstein(X_I, Time, Timestep, DriftCoeff, DiffCoeff, dDiffdX)
-        
-        call get_random_normal(RandomNormal)
-        Wk(1) = sqrt(Timestep)*RandomNormal
+        ! call get_sde_coeffs_milstein(X_I, Time, Timestep, DriftCoeff, DiffCoeff, dDiffdX)
+        ! if(Time+Timestep.gt.tStepMax) Timestep = tStepMax - time
+
+        ! call get_random_normal(RandomNormal)
+        ! Wk(1) = sqrt(Timestep)*RandomNormal
 
         ! No momentum diffusion. 
-        Wk(2) = 0.0
+        ! Wk(2) = 0.0
 
-        Xnew_I = X_I + DriftCoeff * Timestep + DiffCoeff * Wk + dDiffdX * (Wk**2 - Timestep)
+        ! Xnew_I = X_I + DriftCoeff * Timestep + DiffCoeff * Wk + dDiffdX * (Wk**2 - Timestep)
 
-    end subroutine milstein_sde
+    ! end subroutine milstein_sde
     !==============================================================================
     ! subroutine rk2_sde(X_I, Time, Timestep, Xnew_I)
         !     ! Runge Kutta 2 Scheme for SDEs

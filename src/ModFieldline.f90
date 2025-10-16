@@ -1,509 +1,429 @@
+!  Copyright (C) 2002 Regents of the University of Michigan,
+!  portions used with permission
+!  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModFieldline
-    use ModKind
-    use ModMpi
-    use ModUtilities, ONLY: find_cell
-    use PT_ModRandom, ONLY: get_random_normal
 
-    use PT_ModConst
-
-    implicit none
+    use PT_ModGrid
+    use PT_ModTime, ONLY: PTTime, DataInputTime
+    use PT_ModConst, ONLY: cPi, ckeV, cAU, cRsun, cProtonMass, &
+                           cElectronCharge, cLightSpeed, cProtonRestEnergy
+    use PT_ModSize,  ONLY: nVertexMax
     
-    SAVE
-    ! number of dimensions solved by SDE, (passed to ModParticle and ModSolver !)
-    ! should definitely not be here, need to put in ModMain, ModInitialize, or something higher up
-    integer, parameter :: nDim = 2
-    integer, parameter :: LagrCoord_ = 1, Momentum_ = 2
+    implicit none
+    save
 
-    integer :: nT, nS ! number of time and spatial (lagr) grid points
-    real :: tMin, tMax, rMin, rMax, shockMaxR, rMinInject, rMaxInject ! boundary conditions
-    real :: TimeStepFactor, MaxTimeStep
+    integer :: iLine = 1
 
-    ! Arrays are data read in from field line files: size (nT, nLagr)
-    ! Already in lagrangian coordinates!
-    ! TODO: Change array names to match SWMF naming convention
-    real, allocatable :: time_Array(:), S_Array(:,:), rho_Array(:,:), &
-                         B_Array(:,:), U_Array(:,:), R_Array(:,:), &
-                         shockLocation(:), AlfvenTurb_Array(:,:), &
-                         Temp_Array(:, :)
+    logical :: UseConstantDiffusion = .false.
+    real    :: DxxConst = 10.0
+
+    real, allocatable :: PreviousState(:, :), CurrentState(:,:), &
+                         MhdState1(:, :), MhdState2(:,:)
+
+    integer, parameter :: nStateVar    = 6, nStateAdvect = 5, &
+                          RhoState_    = 1, &
+                          BState_      = 2, &
+                          dBState_     = 3, &
+                          dSState_     = 4, &
+                          UState_      = 5, &
+                          RState_      = 6
+                          
+    real    :: PreviousTime, CurrentTime
+    integer :: iShock1, iShock2
+    integer :: WidthUp, WidthDown
 
 contains
-
-   !============================================================================
-    subroutine read_param(NameCommand)
+!============================================================================
+    subroutine read_param_fieldline(NameCommand)
 
         use ModReadParam, ONLY: read_var
         use ModUtilities, ONLY: CON_stop
 
         character(len=*), intent(in):: NameCommand ! From PARAM.in
         character(len=*), parameter:: NameSub = 'read_param'
-        character(len=1) :: Scheme
         !--------------------------------------------------------------------------
         select case(NameCommand)
-
-        case('#BC')
-            call read_var('rMin', rMin )
-            call read_var('rMax', rMax)
-            call read_var('tMax', tMax)
-            call read_var('rMinInject', rMinInject)
-            call read_var('rMaxInject', rMaxInject)
-            call read_var('TimeStepFactor', TimeStepFactor)
-            call read_var('MaxTimeStep', MaxTimeStep)
-
-            ! Convert to m
-            rMin = rMin * cRsun
-            rMax = rMax * cRsun
-            rMinInject = rMinInject * cRsun
-            rMaxInject = rMaxInject * cRsun
-
+        case('#DIFFUSION')
+            call read_var('UseConstantDiffusion', UseConstantDiffusion)
+            call read_var('DxxConst', DxxConst)
         case default
             call CON_stop(NameSub//' Unknown command '//NameCommand)
         end select
 
-    end subroutine read_param
+    end subroutine read_param_fieldline
     !============================================================================
-    subroutine read_fieldline
-        use PT_ModProc, ONLY: iProc
-        character(len=*), parameter :: FileLocation = 'PT/Param/'
-        integer :: i, row, col
-        
-        ! ====================================
-        ! read in time array
-        open(8, file = FileLocation//'Lagr_time.dat', status = 'old')
-        read(8,*) nT, nS
-        allocate(time_Array(nT))
-        
-        do i = 1, nT
-            read(8,*) time_Array(i)
-        end do
-        close(8)
+    subroutine set_fieldline(iLineIn)
+        integer, intent(in) :: iLineIn
+        integer :: iVertex, iLagr
 
-        tMin = time_Array(1)
+        iLine = iLineIn
 
-        if(tMax.gt.(time_Array(nT)-2*MaxTimeStep)) then
-            tMax = time_Array(nT)-2*MaxTimeStep
-           if(iProc.eq.0) write(*,*) 'tMax too large, setting tMax = ', tMax, ' s'
-        end if
+        if(allocated(PreviousState)) deallocate(PreviousState)
+        if(allocated(CurrentState)) deallocate(CurrentState)
+        if(allocated(MhdState1)) deallocate(MhdState1)
+        if(allocated(MhdState2)) deallocate(MhdState2)
 
-        ! ====================================
-        ! read in data along fieldline at each time step
-        allocate(S_Array(nT, nS))
-        open(8, file = FileLocation//'Lagr_S.dat', status = 'old')
-        read(8, *) ((S_Array(row, col), col=1,nS), row=1,nT)
-        close(8)
+        allocate(PreviousState(1:nStateVar, 1:nVertexMax))
+        allocate(CurrentState(1:nStateVar, 1:nVertexMax))
+        allocate(MhdState1(1:nStateVar, 1:nVertexMax))
+        allocate(MhdState2(1:nStateVar, 1:nVertexMax))
 
-        allocate(rho_Array(nT, nS))
-        open(8, file = FileLocation//'Lagr_rho.dat', status = 'old')
-        read(8, *) ((rho_Array(row, col), col=1,nS), row=1,nT)
-        close(8)
+        MhdState1(RhoState_, :) = State_VIB(RhoOld_, :, iLine)
+        MhdState1(BState_, :) = State_VIB(BOld_, :, iLine)
+        MhdState1(dBState_, :) = State_VIB(dBOld_, :, iLine)
+        MhdState1(dSState_, :) = State_VIB(DOld_, :, iLine)
+        MhdState1(UState_, :) = State_VIB(UOld_, :, iLine)
+        MhdState1(RState_, :) = State_VIB(ROld_, :, iLine)
 
-        allocate(B_Array(nT, nS))
-        open(8, file = FileLocation//'Lagr_B.dat', status = 'old')
-        read(8, *) ((B_Array(row, col), col=1,nS), row=1,nT)
-        close(8)
+        MhdState2(RhoState_, :) = MhData_VIB(Rho_, :, iLine)
+        MhdState2(BState_, :) = State_VIB(B_, :, iLine)
+        MhdState2(dBState_, :) = State_VIB(dB_, :, iLine)
+        MhdState2(dSState_, :) = State_VIB(D_, :, iLine)
+        MhdState2(UState_, :) = State_VIB(U_, :, iLine)
+        MhdState2(RState_, :) = State_VIB(R_, :, iLine)
 
-        allocate(U_Array(nT, nS))
-        open(8, file = FileLocation//'Lagr_U.dat', status = 'old')
-        read(8, *) ((U_Array(row, col), col=1,nS), row=1,nT)
-        close(8)
+        PreviousState = MhdState1
+        PreviousTime = PTTime
 
-        allocate(R_Array(nT, nS))
-        open(8, file = FileLocation//'Lagr_R.dat', status = 'old')
-        read(8, *) ((R_Array(row, col), col=1,nS), row=1,nT)
-        close(8)
-
-        allocate(Temp_Array(nT, nS))
-        open(8, file = FileLocation//'Lagr_T.dat', status = 'old')
-        read(8, *) ((Temp_Array(row, col), col=1,nS), row=1,nT)
-        close(8)
-
-        allocate(AlfvenTurb_Array(nT, nS))
-        open(8, file = FileLocation//'Lagr_AlfvenTurb.dat', status = 'old')
-        read(8, *) ((AlfvenTurb_Array(row, col), col=1,nS), row=1,nT)
-        close(8)
-
-        ! ====================================
-        ! convert to SI
-        S_Array = S_Array * cRsun  ! [m]
-        R_Array = R_Array * cRsun  ! [m]
-        ! U = [m/s], rho = [kg/m^3]
-        ! B = [T]
-        ! AlfenTurb = [T**2] dB**2 = mu0 * (wave1 + wave2)
-        ! T = [keV] ! convert to K?
-
-        if(maxval(R_Array).lt.rMax) then
-            rMax = maxVal(R_Array)
-            if(iProc.eq.0) write(*, *) 'rMax too large, setting rMax = ', rMax/cRsun
-        end if
-
-        if(minval(R_Array).gt.rMin) then
-            rMin = minVal(R_Array)
-            if(iProc.eq.0) write(*, *) 'rMin too small, setting rMin = ', rMin/cRsun
-        end if
-        
-        ! ====================================
-        ! read in shock location
-        allocate(shockLocation(nT))
-        open(8, file = FileLocation//'shockLoc.dat', status = 'old')
-        do i = 1, nT
-            read(8,*) shockLocation(i)
-        end do
-        close(8)
-        
-        shockLocation = shockLocation * cRsun
-        shockMaxR = shockLocation(nT)
-
-    end subroutine read_fieldline
-    !============================================================================
-    subroutine calculate_ds(Time, LagrCoord, dS)
-        real, intent(in) :: Time, LagrCoord
-        real, intent(out) :: dS
-        real :: sUp, sDown
-
-        ! calculate distance between lagr coordinates
-        call get_array_value(Time, LagrCoord + 0.5, S_Array, sUp)
-        call get_array_value(Time, LagrCoord - 0.5, S_Array, sDown)
-        dS = sUp - sDown
-
-    end subroutine calculate_ds
-    !============================================================================
-    subroutine calc_drhodt(Time, LagrCoord, Timestep, dRhodT)
-        real, intent(in) :: Time, LagrCoord, Timestep
-        real, intent(out) :: dRhodT
-        real :: RhoNow, RhoPast
-
-        call get_array_value(Time, LagrCoord, rho_Array, RhoNow)
-        call get_array_value(Time - Timestep, LagrCoord, rho_Array, RhoPast)
-
-        dRhodT = (RhoNow - RhoPast) / (Timestep)
-
-    end subroutine calc_drhodt
-    !============================================================================
-    subroutine get_sde_coeffs_euler(X_I, Time, Timestep, DriftCoeff, DiffCoeff)
-        real, intent(in) :: X_I(nDim), Time
-        real, intent(out) :: Timestep, DriftCoeff(nDim), DiffCoeff(nDim)
-        
-        real :: Momentum
-        real :: B, rho, Dxx, dS, dRhodT
-        real :: Bup, DxxUp, dSup
-        real :: Bdown, DxxDown, dSdown
-
-        Momentum  = (3.0*X_I(Momentum_))**(1.0/3.0)
-
-        ! values at particle current position
-        call calculate_ds(Time, X_I(LagrCoord_), dS)
-        call get_array_value(Time, X_I(LagrCoord_), B_Array, B)
-        call get_array_value(Time, X_I(LagrCoord_), rho_Array, rho)
-        call get_diffusion_coeff(Time, X_I(LagrCoord_), Momentum, Dxx)
-        ! Use timestep of 120 to calc drho/dt 
-        call calc_drhodt(Time, X_I(LagrCoord_), 120.0, dRhodT)
-
-        ! values half lagr coord upstream
-        call get_array_value(Time, X_I(LagrCoord_) + 0.5, B_Array, Bup)
-        call calculate_ds(Time, X_I(LagrCoord_) + 0.5, dSup)
-        call get_diffusion_coeff(Time, X_I(LagrCoord_) + 0.5, Momentum, DxxUp)
-
-        ! values half lagr coord downstream
-        call get_array_value(Time, X_I(LagrCoord_) - 0.5, B_Array, Bdown)
-        call calculate_ds(Time, X_I(LagrCoord_) - 0.5, dSdown)
-        call get_diffusion_coeff(Time, X_I(LagrCoord_) - 0.5, Momentum, DxxDown)
-
-        ! lagr coord coefficients
-        DriftCoeff(LagrCoord_) = B * ((DxxUp / (Bup * dSup)) - (DxxDown / (Bdown * dSdown))) / dS
-        DiffCoeff(LagrCoord_) = sqrt(2.0 * Dxx) / dS
-
-        ! momentum coefficients
-        DriftCoeff(Momentum_) = X_I(Momentum_) * dRhodT / rho
-        DiffCoeff(Momentum_) = 0.0
-
-        ! calculate timestep based on coefficients
-        ! diffusion >> drift
-        Timestep = TimeStepFactor * DiffCoeff(LagrCoord_) / DriftCoeff(LagrCoord_)**2.0
-        Timestep = min(Timestep, MaxTimeStep)
-
-    end subroutine get_sde_coeffs_euler
-    !============================================================================
-    subroutine get_sde_coeffs_milstein(X_I, Time, Timestep, DriftCoeff, DiffCoeff, dDiffdX)
-        real, intent(in) :: X_I(nDim), Time
-        real, intent(out) :: Timestep, DriftCoeff(nDim), DiffCoeff(nDim), dDiffdX(nDim)
-        
-        real :: Momentum
-        real :: B, rho, Dxx, dS, dRhodT
-        real :: Bup, DxxUp, dSup
-        real :: Bdown, DxxDown, dSdown
-
-        Momentum  = (3.0*X_I(Momentum_))**(1.0/3.0)
-
-        ! values at particle current position
-        call calculate_ds(Time, X_I(LagrCoord_), dS)
-        call get_array_value(Time, X_I(LagrCoord_), B_Array, B)
-        call get_array_value(Time, X_I(LagrCoord_), rho_Array, rho)
-        call get_diffusion_coeff(Time, X_I(LagrCoord_), Momentum, Dxx)
-        ! Use timestep of 120 to calc drho/dt 
-        call calc_drhodt(Time, X_I(LagrCoord_), 120.0, dRhodT)
-
-        ! values half lagr coord upstream
-        call get_array_value(Time, X_I(LagrCoord_) + 0.5, B_Array, Bup)
-        call calculate_ds(Time, X_I(LagrCoord_) + 0.5, dSup)
-        call get_diffusion_coeff(Time, X_I(LagrCoord_) + 0.5, Momentum, DxxUp)
-
-        ! values half lagr coord downstream
-        call get_array_value(Time, X_I(LagrCoord_) - 0.5, B_Array, Bdown)
-        call calculate_ds(Time, X_I(LagrCoord_) - 0.5, dSdown)
-        call get_diffusion_coeff(Time, X_I(LagrCoord_) - 0.5, Momentum, DxxDown)
-
-        ! lagr coord coefficients
-        DriftCoeff(LagrCoord_) = B * ((DxxUp / (Bup * dSup)) - (DxxDown / (Bdown * dSdown))) / dS
-        DiffCoeff(LagrCoord_) = sqrt(2.0 * Dxx) / dS
-        dDiffdX(LagrCoord_) = (DxxUp / dSup**2.0) - (DxxDown / dSdown**2.0)
-
-        ! momentum coefficients
-        DriftCoeff(Momentum_) = X_I(Momentum_) * dRhodT / rho
-        DiffCoeff(Momentum_) = 0.0
-        dDiffdX(Momentum_) = 0.0
-
-        ! calculate timestep based on coefficients
-        ! diffusion >> drift
-        Timestep = TimeStepFactor * DiffCoeff(LagrCoord_) / DriftCoeff(LagrCoord_)**2.0
-        Timestep = min(Timestep, MaxTimeStep)
-
-    end subroutine get_sde_coeffs_milstein
-    !============================================================================
-    ! subroutine get_sde_coeffs_rk2(X_I, Time, Timestep, DriftCoeff, DiffCoeff)
-        
-        !     real, intent(in) :: X_I(nDim), Time, Timestep
-        !     real, intent(out) :: DriftCoeff(nDim), DiffCoeff(nDim)
-        
-        !     integer :: iS
-        !     real :: LagrCoord, Momentum
-        !     real :: dS, dSup, dSdown
-        !     real :: B, Bup, Bdown, dBdS 
-        !     real :: Dxx, DxxUp, DxxDown, dDxxdS
-        !     real :: rho, dRhodT
-
-        !     !! NO LONGER USED
-        !     !! Just in case...
-
-        !     LagrCoord = X_I(LagrCoord_)
-        !     Momentum  = (3.0*X_I(Momentum_))**(1.0/3.0)
+        CurrentTime = PreviousTime
+        CurrentState = PreviousState
     
-        !     ! ==============================
-        !     ! get variables at particle location
-        !     call get_array_value(Time, LagrCoord, B_Array, B)
-        !     call get_array_value(Time, LagrCoord, rho_Array, rho)
-        !     call get_diffusion_coeff(Time, LagrCoord, Momentum, Dxx)
+        iShock1 = iShock_IB(ShockOld_, iLine)
+        iShock2 = iShock_IB(Shock_, iLine)
 
-        !     ! ==============================
-        !     ! Calculate drho/dt - central difference with dt = 1.0 second
-        !     call calc_drhodt(Time, LagrCoord, 120.0, dRhodT)
-        !     ! ==============================
-        !     ! calculate spatial derivatives at i + 0.5, i - 0.5
-        !     call calculate_ds(Time, LagrCoord, dS)
-
-        !     call get_array_value(Time, LagrCoord + 0.5, B_Array, Bup)
-        !     call get_diffusion_coeff(Time, LagrCoord + 0.5, Momentum, DxxUp)
-        !     call calculate_ds(Time, LagrCoord + 0.5, dSup)
-
-        !     call get_array_value(Time, LagrCoord - 0.5, B_Array, Bdown)
-        !     call get_diffusion_coeff(Time, LagrCoord - 0.5, Momentum, DxxDown)
-        !     call calculate_ds(Time, LagrCoord - 0.5, dSdown)
-
-        !     dBdS = (Bup - Bdown) / dS
-        !     dDxxdS = (DxxUp - DxxDown) / dS
-
-        !     ! ==============================
-        !     ! calculate sde coefficients
-        !     ! (0.5 + 0.5*StratoFactor) takes into account difference in drift
-        !     ! coefficient for Ito (S = 1) and Stratonovich (S = 0)
-        !     DriftCoeff(LagrCoord_) = (0.5 + 0.5*StratoFactor) * dDxxdS / dS - Dxx * dBdS / (B*dS)
-        !     DiffCoeff(LagrCoord_) = sqrt(2.0 * Dxx) / dS
-        !     ! write(*,*) 'Ratio: ', DiffCoeff(LagrCoord_) / DriftCoeff(LagrCoord_) 
-
-        !     DriftCoeff(Momentum_) = X_I(Momentum_) * dRhodT / rho
-        !     DiffCoeff(Momentum_) = 0.0
-
-    ! end subroutine get_sde_coeffs_rk2
+    end subroutine
     !============================================================================
-    subroutine get_diffusion_coeff(Time, LagrCoord, Momentum, Dxx)
-        real, intent(in) :: Time, LagrCoord, Momentum
-        real, intent(out) :: Dxx
+    subroutine advect_fieldline(Alpha, iShockNew, NewTime)
+        real, intent(in) :: Alpha, NewTime
+        integer, intent(in) :: iShockNew
 
-        real :: R, B, dB
-        
-        call get_array_value(Time, LagrCoord, R_Array, R)
-        call get_array_value(Time, LagrCoord, B_Array, B)
-        call get_array_value(Time, LagrCoord, AlfvenTurb_Array, dB)
-        call calc_mhd_dxx(R, B, dB, Momentum, Dxx)
+        integer :: iVar, iLagr
+        integer :: iShockNewUp, iShockNewDown
 
-    end subroutine get_diffusion_coeff
+        real :: Slope, Ratio
+
+        PreviousState = CurrentState
+        PreviousTime = CurrentTime
+        CurrentState = 0.0
+        CurrentTime = NewTime
+
+        ! Interpolate widths in time
+        WidthUp   = floor((1-Alpha) * (iShock_IB(ShockUpOld_, iLine) - iShock1) + &
+                            Alpha   * (iShock_IB(ShockUp_, iLine) - iShock2))
+        WidthDown = floor((1-Alpha) * (iShock1 - iShock_IB(ShockDownOld_, iLine)) + &
+                            Alpha   * (iShock2 - iShock_IB(ShockDown_, iLine)))
+        ! check bounds
+        WidthDown = min(iShock1 - MinLagr(iLine), WidthDown)
+        WidthUp   = min(WidthUp, MaxLagr(iLine) - iShock2)
+
+        ! write(*,*) iShock_IB(ShockDownOld_, iLine), iShock1, iShock_IB(ShockUpOld_, iLine)
+        ! write(*,*) iShock_IB(ShockDown_, iLine), iShock2, iShock_IB(ShockUp_, iLine)
+        ! write(*,*) iShockNew, WidthDown, WidthUp
+        ! write(*,*) '# --------------------------------------- #'
+    
+        ! interpolate fieldline in time
+        CurrentState = (1 - Alpha) * MhdState1 + Alpha * MhdState2
+
+        !Insert advected shock
+        CurrentState(1:nStateAdvect, iShockNew-WidthDown:iShockNew+WidthUp) = &
+            (1-alpha) * MhdState1(1:nStateAdvect, iShock1-WidthDown:iShock1+WidthUp) + &
+              alpha   * MhdState2(1:nStateAdvect, iShock2-WidthDown:iShock2+WidthUp)
+
+        ! Need to smooth over previous shock regions and ensure smooth interpolation
+        ! with inserted shock!
+
+        ! do iVar = 1, nStateAdvect
+            
+        !     Ratio = CurrentState(iVar, iShockNew-WidthDown-1) / &
+        !             CurrentState(iVar, iShockNew-WidthDown) 
+        !     CurrentState(iVar, iShockNew-WidthDown:iShockNew+WidthUp) = &
+        !         CurrentState(iVar, iShockNew-WidthDown:iShockNew+WidthUp) * Ratio
+            ! Ratio =  CurrentState(iVar,iShockNew+WidthUp+1) / &
+            !          CurrentState(iVar, iShockNew+WidthUp) 
+            ! CurrentState(iVar, iShockNew:iShockNew+WidthUp) = &
+            !     CurrentState(iVar, iShockNew:iShockNew+WidthUp) * Ratio
+            ! do iLagr = iShockNew-2, iShockNew+2
+            !     CurrentState(iVar, iLagr) = sum(CurrentState(iVar,iLagr-1:iLagr+1)) / 3.0
+            ! end do
+
+        ! end do
+
+        ! SHOCK SHARPENING ALGORITHM GOES HERE
+    
+    end subroutine advect_fieldline
     !============================================================================
-    subroutine calc_mhd_dxx(R, B, dB, Momentum, Dxx)
-        real, intent(in) :: R, Momentum, B, dB
-        real, intent(out) :: Dxx
-
-        real :: ConstantFactor = 81.0 / (7.0*cPi) * (0.5/cPi)**(2.0/3.0)
-        real :: Velocity, MeanFreePath, Lmax, BTotal
-
-        Velocity = Momentum / cProtonMass
-        Velocity = sqrt(Velocity**2 / (1 + (Velocity/cLightSpeed)**2))
-
-        Lmax = 0.4*R
-        Btotal = sqrt(B**2 + dB)
-        MeanFreePath = ConstantFactor * BTotal**2 * &
-                       (Momentum*Lmax**2/(B * cElectronCharge))**(1.0/3.0) / dB
-
-        Dxx = MeanFreePath * Velocity / 3.0
-        Dxx = max(Dxx, 1.0d4 * cRsun)
-
-    end subroutine calc_mhd_dxx
-    !============================================================================
-    subroutine get_empirical_dxx(R, Momentum, Dxx)
-        real, intent(in) :: R, Momentum
-        real, intent(out) :: Dxx
-        real :: Dxx0, Energy
-
-        ! Uses formula from Chen et al., 2024 for Dxx
-        ! Hard-coded numbers are taken straight from Chen et al., 2024 Equation 4
-        Dxx0 = 5.16d14 ! [m^2/s]
-        Energy = sqrt((Momentum*cLightSpeed)**2 + cProtonRestEnergy**2) - cProtonRestEnergy
-
-        Dxx = Dxx0 * (R / cAU)**(1.17) * (Energy / ckeV)**(0.71)
-
-        ! Add uncertainity in PSP measurements?? Only slowed code down and didn't change results
-        ! Needs more testing. 
-        ! Added in uncertainity by sampling from normal distributions with given errors
-
-        ! call get_random_normal(RandNormal)
-        ! Dxx0 = 5.16d14 + 1.22d14*RandNormal! cm^2 / s
-
-        ! ! Cap at 3-sigma value, otherwise this can go negative
-        ! Dxx0 = max(Dxx0, 1.5d14)
-        
-        ! Energy = sqrt((Momentum*cLightSpeed)**2 + cProtonRestEnergy**2) - cProtonRestEnergy
-
-        ! call get_random_normal(RandNormal)
-        ! rExponent = 1.17 + 0.08*RandNormal
-
-        ! Dxx = Dxx0 * (R / cAU)**(rExponent) * (Energy / ckeV)**(0.71)
-
-    end subroutine get_empirical_dxx
-    !============================================================================
-    subroutine get_array_value(Time, LagrCoord, Array, InterpValue)
-        ! get value of array at (t, i)
-        ! uses bilinear interpolation
-        real, intent(in) :: Time, LagrCoord, Array(:,:)
+    subroutine interpolate_statevar(Time, LagrCoord, Var, InterpValue)
+        real, intent(in) :: Time, LagrCoord
+        integer, intent(in) :: Var
         real, intent(out) :: InterpValue
-
-        integer :: iTime, iLagr        ! (lower) index of desired t, i
-        real :: iTimeFrac, iLagrFrac ! fractional indices
-        real :: f1, f2 ! intermediate values, interpolated in lagr but not t
-
-        ! for debugging
-        ! if(Time.gt.tMax.or.Time.lt.tMin) write(*,*) 'Time = ', Time
-        ! if(LagrCoord.gt.nS.or.LagrCoord.lt.1) write(*,*) 'LagrCoord = ', LagrCoord
-
-        call find_cell(1, nT, Time, iTime, iTimeFrac, time_Array)
-
-        iTime = minloc(Time - time_Array, mask = (Time - time_Array > 0), dim = 1) 
-        iTimeFrac = (Time - time_Array(iTime)) / (time_Array(iTime + 1) - time_Array(iTime))
         
+        integer :: iLagr
+        real :: iLagrFrac, TimeFrac, f1, f2
+        ! bilinear interpolation in time and space
+
+        TimeFrac = (Time - PreviousTime) / (CurrentTime - PreviousTime)
+
+        ! get integer and fractional parts of lagrangian coordinate
         iLagr = floor(LagrCoord)
         iLagrFrac = LagrCoord - iLagr
 
-        f1 = (1-iLagrFrac) * Array(iTime, iLagr) + iLagrFrac * Array(iTime, iLagr+1)
-        f2 = (1-iLagrFrac) * Array(iTime+1, iLagr) + iLagrFrac * Array(iTime+1, iLagr+1)
-        InterpValue = (1-iTimeFrac) * f1 + iTimeFrac*f2
-    
-    end subroutine get_array_value
+        ! if either are less than 1 return -1.0
+        ! should only occur after particle timestep and particle location is
+        ! being calculated from new lagrangian coordinate
+        ! boundary condition check occurs immediately after
+        if(iLagr.lt.MinLagr(iLine).or.iLagr+1.gt.MaxLagr(iLine)) then
+            InterpValue = -1.0    
+        else
+            ! spatial interpolation at old time
+            f1 = (1-iLagrFrac) * PreviousState(Var, iLagr) + & 
+                iLagrFrac * PreviousState(Var, iLagr+1)
+
+            ! spatial interplation at next time
+            f2 = (1-iLagrFrac) * CurrentState(Var, iLagr) + & 
+                iLagrFrac * CurrentState(Var, iLagr+1)
+            ! interpolation in time
+            InterpValue = (1 - TimeFrac) * f1 + TimeFrac * f2
+        end if
+
+    end subroutine interpolate_statevar
     !============================================================================
-    subroutine get_random_shock_location(Time, LagrCoord, R)
-        real, intent(out) :: Time, LagrCoord, R
+    subroutine calculate_dLogRho(LagrCoord, dLogRhodTau)
+        real, intent(in) :: LagrCoord
+        real, intent(out) :: dLogRhodTau
 
-        real :: RandomUniform
-        real :: iTimeFrac, iSFrac1, iSFrac2
-        real :: func1, func2 
+        integer :: iLagr
+        real :: iLagrFrac, TimeFrac, f1, f2
+        real :: RhoCurrent, RhoPrevious
 
-        integer :: iTime, iS1, iS2
-        logical :: doExtrapolate = .true.
- 
-        ! uniform random numbers over [0,1)
-        call random_number(RandomUniform)
+        iLagr = floor(LagrCoord)
+        iLagrFrac = LagrCoord - iLagr
 
-        ! inverse transform sampling
-        ! desired pdf is ~1/r^2 from [rMinInject, rMaxInject]
-        ! equation for r is F(F^-1) = ru
-        ! where F is the CDF of the desired normalized pdf
-
-        ! R = rMaxInject*rMinInject / (rMaxInject*(1-RandomUniform) + rMinInject*RandomUniform)
-
-        ! Uniform sampling in R
-        R = rMinInject + (rMaxInject - rMinInject) * RandomUniform
-     
-        ! Find time when shock is at this radial distance
-        call find_cell(1, nT, R, iTime, iTimeFrac, shockLocation)
-        Time = time_Array(iTime) + iTimeFrac * (time_Array(iTime+1) - time_Array(iTime))
-
-        ! Get lagrangian coordinate at this time
-        call get_lagr_coord(Time, R, LagrCoord)
-
-    end subroutine get_random_shock_location
-    !=============================================================================
-    subroutine get_lagr_coord(Time, R, LagrCoord)
-        real, intent(in) :: Time, R
-        real, intent(out) :: LagrCoord
-
-        real :: iTimeFrac, iSFrac1, iSFrac2
-        real :: f1, f2
-
-        integer :: iTime, iS1, iS2
-        logical :: doExtrapolate = .true.
-
-        real :: deltaT, tempR(nS)
+        RhoCurrent = CurrentState(RhoState_, iLagr) * (1-iLagrFrac) + &
+                     CurrentState(RhoState_, iLagr+1) * iLagrFrac
+        RhoPrevious = PreviousState(RhoState_, iLagr) * (1-iLagrFrac) + &
+                     PreviousState(RhoState_, iLagr+1) * iLagrFrac                    
         
-        ! Find time when shock is at this radial distance
-        call find_cell(1, nT, Time, iTime, iTimeFrac, time_Array)
+        dLogRhodTau = log(RhoCurrent/RhoPrevious) / (CurrentTime - PreviousTime)
+        
+    end subroutine calculate_dLogRho
+    !============================================================================
+    subroutine get_dxx(Time, LagrCoord, Momentum, Dxx)
+        real, intent(in) :: Time, LagrCoord, Momentum
+        real, intent(out) :: Dxx
 
-        deltaT = Time - time_Array(iTime)
-        tempR = R_Array(iTime, :) + U_Array(iTime, :) * deltaT
+        real :: R, ShockR, B, dB
 
-        call find_cell(1, nS, R, iS1, iSFrac1, tempR, doExtrapolate)
-        LagrCoord = iS1 + iSFrac1
+        if(UseConstantDiffusion) then
+            ! constant Rs**2 is to offset the unit conversion
+            ! of dS in the SDE coefficients
+            ! only for analytical test!
+            Dxx = DxxConst * cRsun**2
+            return
+        end if
 
-    end subroutine get_lagr_coord
-    !=============================================================================
+        call interpolate_statevar(Time, LagrCoord, RState_, R)
+        call interpolate_statevar(Time, LagrCoord, BState_, B)
+        call interpolate_statevar(Time, LagrCoord, dBState_, dB)
+        call get_mhd_dxx(R, B, dB, Momentum, Dxx)
+
+        ! not quite right - shock location not moving during sharpening...
+        ! ShockR = CurrentState(RState_, iShock2)
+        ! ShockR + 0.5?
+        ! if(R.gt.(ShockR+0.5)) then
+        !     call get_psp_dxx(R, Momentum, Dxx)
+        ! end if
+
+    end subroutine get_dxx
+    !============================================================================ 
+    subroutine get_mhd_dxx(R, B, dB, Momentum, Dxx)
+        real, intent(in) :: R, B, dB, Momentum
+        real, intent(out) :: Dxx
+        real :: ConstantFactor = 81.0 / (7.0*cPi) * (0.5/cPi)**(2.0/3.0)
+        real :: Velocity, Lmax, Btotal, MeanFreePath
+        
+        ! relativistic velocity
+        Velocity = Momentum / cProtonMass
+        Velocity = sqrt(Velocity**2 / (1 + (Velocity/cLightSpeed)**2))
+
+        ! Calculate mean free path
+        ! TODO: add maximum dB/B - shouldn't be more than 1
+        Lmax = 0.4*R*cRsun
+        Btotal = sqrt(B**2 + dB)
+
+        ! if((Btotal/sqrt(dB)).lt.1.0) Btotal = sqrt(dB)
+        ! if((Btotal**2/dB).gt.1) write(*,*) 'B/dB > 1'
+        MeanFreePath = ConstantFactor * Btotal**2 * &
+                        (Momentum*Lmax**2/(B * cElectronCharge))**(1.0/3.0) / dB
+
+        ! Calculate Dxx 
+        Dxx = MeanFreePath * Velocity / 3.0
+        Dxx = max(Dxx, 1.0d4 * cRsun)
+
+    end subroutine get_mhd_dxx
+    !============================================================================ 
+    subroutine get_psp_dxx(R, Momentum, Dxx)
+        real, intent(in) :: R, Momentum
+        real, intent(out) :: Dxx
+
+        real :: Dxx0, Energy
+
+        Dxx0 = 5.16d14 ! [m^2/s]
+        Energy = sqrt((Momentum*cLightSpeed)**2 + cProtonRestEnergy**2) - cProtonRestEnergy
+
+        Dxx = Dxx0 * (R * cRsun / cAU )**(1.17) * (Energy / ckeV)**(0.71)
+
+    end subroutine get_psp_dxx
+    !============================================================================   
+    subroutine get_sde_coeffs_euler(X_I, Time, TimeStep, DriftCoeff, DiffCoeff)
+        use PT_ModSize, only: nDim
+
+        real, intent(in) :: X_I(nDim), Time
+        real, intent(out) :: Timestep, DriftCoeff(nDim), DiffCoeff(nDim)
+
+        real :: Momentum, B, Dxx, dS
+        real :: Bup, DxxUp, dSup
+        real :: Bdown, DxxDown, dSdown
+        real :: Rho1, RhoOld1, dLogRhodTau
+
+        integer :: iVertex
+        ! Need to figure out where to put X_I index variables - hardcoded 2 = Momentum_
+        Momentum = (3.0*X_I(2))**(1.0/3.0)
+
+        ! Need to figure out where to put X_I index variables - hardcoded 1 = LagrCoord_
+        call calculate_dLogRho(X_I(1), dLogRhodTau)
+        
+        ! get values at particle current location
+        call interpolate_statevar(Time, X_I(1), BState_, B)
+        call interpolate_statevar(Time, X_I(1), dSState_, dS)
+        call get_dxx(Time, X_I(1), Momentum, Dxx)
+        
+        ! get values one lagrangian coordinate upstream of particle location
+        call interpolate_statevar(Time, X_I(1) + 1.0, BState_, Bup)
+        call interpolate_statevar(Time, X_I(1) + 1.0, dSState_, dSup)
+        call get_dxx(Time, X_I(1) + 1.0, Momentum, DxxUp)
+
+        ! convert from [Rsun] to [m]
+        dS = dS * cRsun
+        dSup = dSup * cRsun
+
+
+        ! lagr coord sde coefficients
+        DriftCoeff(1) = B * ((DxxUp / (Bup * dSup)) - (Dxx / (B * dS))) / dS
+        DiffCoeff(1) = sqrt(2.0 * Dxx) / dS
+        ! momentum sde coefficients
+        DriftCoeff(2) = X_I(2) * dLogRhodTau
+        DiffCoeff(2) = 0.0
+
+        ! calculate timestep based on coefficients
+        ! diffusion >> drift
+        Timestep = DiffCoeff(1)**2.0 / DriftCoeff(1)**2.0
+      
+    end subroutine get_sde_coeffs_euler
+    !============================================================================
     subroutine compute_weight(Time, LagrCoord, Weight)
         real, intent(in) :: Time, LagrCoord
         real, intent(out) :: Weight
-        real :: T, rho
 
-        call get_array_value(Time, LagrCoord, Temp_Array, T)
-        call get_array_value(Time, LagrCoord, rho_Array, rho)
-    
-        Weight = T * rho
+        real :: Temp, Rho
+        ! will need to change to Weight = T*rho
         Weight = 1.0
     end subroutine compute_weight
-    !=============================================================================
+    !============================================================================
     subroutine get_particle_location(Time, LagrCoord, R)
         real, intent(in) :: Time, LagrCoord
         real, intent(out) :: R
+        integer :: iLagr, iVertex, iVertexOld
+        real :: iLagrFrac, TimeFrac
 
-        if(LagrCoord.gt.nS.or.LagrCoord.lt.2.0) then
-            R = 0.0
-        else
-            call get_array_value(Time, LagrCoord, R_Array, R)
-        end if
+        call interpolate_statevar(Time, LagrCoord, RState_, R)
+
     end subroutine get_particle_location
-    !=============================================================================
+    !============================================================================
     subroutine compute_conversion_factor(Time, LagrCoord, ConversionFactor)
         real, intent(in) :: Time, LagrCoord
         real, intent(out) :: ConversionFactor
-        real :: dS, B
+        
+        real :: B, dS
 
-        call get_array_value(Time, LagrCoord, B_Array, B)
-
-        call calculate_ds(Time, LagrCoord, dS)
-
-        ConversionFactor = B/dS
-
+        call interpolate_statevar(Time, LagrCoord, dSState_, dS)
+        call interpolate_statevar(Time, LagrCoord, BState_, B)
+        ! use B or Bsteepen????
+        ConversionFactor = B / dS
     end subroutine compute_conversion_factor
-    !=============================================================================
-end module PT_ModFieldline      
+    !============================================================================
+    subroutine check_boundary_conditions(Time, LagrCoord, R, IsOutside)
+        real, intent(in) :: Time
+        real, intent(inout) :: LagrCoord, R
+        logical, intent(out) :: IsOutside 
+
+        IsOutside = .false.
+
+        ! reflecting boundary condition - inner spatial boundary
+        ! if(LagrCoord.lt.MinLagr(iLine)) then
+        !     LagrCoord = MinLagr(iLine) + 1.0
+        !     call interpolate_statevar(Time, LagrCoord, RState_, R)
+        ! end if
+
+        ! absorbing boundary conditions - outer spatial boundary
+        if(LagrCoord.lt.MinLagr(iLine)) IsOutside = .true.
+        ! absorbing boundary conditions - outer spatial boundary
+        if(LagrCoord.gt.MaxLagr(iLine)) IsOutside = .true.
+      
+    end subroutine check_boundary_conditions
+    !============================================================================
+    subroutine save_fieldline_data(iShockNew, NextTimeStep)
+        integer, intent(in) :: iShockNew
+        real, intent(in) :: NextTimeStep
+        character(len = 20) :: OutString
+
+        write(OutString, *) int(NextTimeStep)
+        OutString = adjustl(OutString)
+
+        ! Current shock location, shock location at end of coupling time,
+        ! shock location at previous coupling time
+        open(102, file = 'PT/IO2/'//'shockloc_'//trim(OutString)//'.dat')
+        write(102, *) PTTime, &
+                    DataInputTime, PreviousTime, CurrentTime, &
+                    iShockNew, iShock1, iShock2, MinLagr(iLine), MaxLagr(iLine), &
+                    WidthUp, WidthDown, iShock_IB(ShockDownOld_, iLine), &
+                    iShock_IB(ShockUpOld_, iLine), iShock_IB(ShockDown_, iLine), &
+                    iShock_IB(ShockUp_, iLine)
+        close(102)
+        ! ------------------------------------------------------------------- 
+        open(101, file = 'PT/IO2/'//'shockdata_'//trim(OutString)//'.dat')
+        
+        write(101, '(7000e15.6)') MhdState1(RhoState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') MhdState2(RhoState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') PreviousState(RhoState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') CurrentState(RhoState_, MinLagr(iLine):MaxLagr(iLine))
+        
+        write(101, '(7000e15.6)') MhdState1(dSState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') MhdState2(dSState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') PreviousState(dSState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') CurrentState(dSState_, MinLagr(iLine):MaxLagr(iLine))
+
+        write(101, '(7000e15.6)') MhdState1(dBState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') MhdState2(dBState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') PreviousState(dBState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') CurrentState(dBState_, MinLagr(iLine):MaxLagr(iLine))
+
+        write(101, '(7000e15.6)') MhdState1(RState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') MhdState2(RState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') PreviousState(RState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') CurrentState(RState_, MinLagr(iLine):MaxLagr(iLine))
+
+        write(101, '(7000e15.6)') MhdState1(UState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') MhdState2(UState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') PreviousState(UState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') CurrentState(UState_, MinLagr(iLine):MaxLagr(iLine))
+
+        write(101, '(7000e15.6)') MhdState1(BState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') MhdState2(BState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') PreviousState(BState_, MinLagr(iLine):MaxLagr(iLine))
+        write(101, '(7000e15.6)') CurrentState(BState_, MinLagr(iLine):MaxLagr(iLine))
+
+        close(101)
+
+    end subroutine save_fieldline_data
+    !============================================================================
+end module PT_ModFieldline
