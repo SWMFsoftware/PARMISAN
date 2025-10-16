@@ -11,12 +11,19 @@ module PT_ModGrid
 #ifdef OPENACC
    use ModUtilities, ONLY: norm2
 #endif
+<<<<<<< HEAD
    use ModUtilities, ONLY: CON_stop
    use PT_ModSize,  ONLY: nVertexMax, nDim
    use PT_ModProc,  ONLY: iProc
    use PT_ModConst, ONLY: cTwoPi, cPi
    use PT_ModConst, ONLY: cMu, cRsun, cProtonMass
    use PT_ModTime, ONLY: PTTime, DataInputTime
+=======
+  use ModUtilities, ONLY: CON_stop
+  use PT_ModSize,  ONLY: nVertexMax
+  use PT_ModProc,  ONLY: nProc, iProc, iError
+  use ModNumConst, ONLY: cTwoPi, cPi
+>>>>>>> refs/remotes/origin/main
 
    implicit none
    SAVE
@@ -30,6 +37,7 @@ module PT_ModGrid
    public:: get_other_state_var ! Auxiliary components of state vector
    public:: check_line_ishock   ! check if iShock exceeds iEnd of the field line
 
+<<<<<<< HEAD
    ! Coordinate system and geometry
    character(len=3), public :: TypeCoordSystem = 'HGR'
    !
@@ -169,6 +177,38 @@ module PT_ModGrid
          'LagrOld   ' ]
 
    logical:: DoInit = .true.
+=======
+  ! Coordinate system and geometry
+  character(len=3), public :: TypeCoordSystem = 'HGR'
+
+  ! Grid info
+  ! Angular grid at origin surface
+  integer, public :: nLat = 4  ! Number of lines along Lat grid
+  integer, public :: nLon = 4  ! Number of lines along Lon grid
+  integer:: iLatOffset = 0     ! Offset of line index along Lat grid
+  integer:: iLonOffset = 0     ! Offset of line index along Lon grid
+
+  ! Total number of magnetic field lines on all PEs (a product of nLat*nLon)
+  integer, public :: nLineAll = 16
+  !
+  ! All nodes are enumerated. The last node number on the previous proc
+  ! (iProc-1)
+  ! equals (iProc*nLineAll)/nProc. Store this:
+  integer, public :: iLineAll0
+  ! The nodes on a given PE have node numbers ranging from iLineAll0 +1 to
+  ! iNodeLast =((iProc + 1)*nLineAll)/nProc. The iLine index to enumerate
+  ! lines on a given proc ranges from 1 to iNodeLast.
+  ! nLine = nNodeLast - iLineAll0 is the number of
+  ! lines (blocks) on this processor. For iLine=1:nLine
+  ! iLineAll = iLineAll0+1:iNodeLast
+  integer, public :: nLine
+  ! Number of particles (vertexes, Lagrangian meshes) per line (line):
+  integer, public,     pointer :: nVertex_B(:)
+  !
+  ! Function converting line number to lon-lat location of the line
+  !
+  public :: iBlock_to_lon_lat
+>>>>>>> refs/remotes/origin/main
 
 contains
    !============================================================================
@@ -217,6 +257,7 @@ contains
       use ModUtilities,      ONLY: check_allocate
       use PT_ModProc,        ONLY: nProc
 
+<<<<<<< HEAD
       integer:: iError
       integer:: iNodeLast
 
@@ -248,15 +289,76 @@ contains
       ! check consistency
       if(nLat <= 0 .or. nLon <= 0)&
          call CON_stop(NameSub//': Origin surface grid is invalid')
+=======
+    character(len=*), parameter:: NameSub = 'init'
+    !--------------------------------------------------------------------------
+    if(.not.DoInit) RETURN
+    DoInit = .false.
+    ! check consistency
+    if(nLat <= 0 .or. nLon <= 0) &
+         call CON_stop(NameSub//': Origin surface grid is invalid')
+
+    ! distribute nodes between processors
+    if(nLineAll >= nProc) then
+       iLineAll0 = ( iProc   *nLineAll)/nProc
+       iNodeLast = ((iProc+1)*nLineAll)/nProc
+       nLine = iNodeLast-iLineAll0
+    else
+       ! there is one processor for each field line: we keep
+       ! iProc = 0~nLineAll-1 working and others for the last line
+       ! we also send the warning message for this over-request
+       nLine = 1
+       if(iProc < nLineAll) then
+          iLineAll0 = iProc
+       else
+          ! Some work/trial has been done, but just partially. One can refer
+          ! to the code version (915'th commit) on August 22, 2024.
+          iLineAll0 = nLineAll-1
+          call warn_more_proc
+          write(*,*) "Here we keep iProc's >", nLineAll, 'on the last line.'
+       end if
+    end if
+    ! allocate data and grid containers
+    allocate(iShock_IB(nShockParam, nLine), stat=iError)
+    call check_allocate(iError, NameSub//'iShock_IB')
+    iShock_IB = NoShock_
+>>>>>>> refs/remotes/origin/main
 
       ! allocate data and grid containers
       allocate(iShock_IB(nShockParam, nLine), stat=iError)
       call check_allocate(iError, NameSub//'iShock_IB')
       iShock_IB = NoShock_
 
+<<<<<<< HEAD
    end subroutine init
    !============================================================================
    subroutine init_stand_alone
+=======
+    ! allocate the grid used in this model
+    use ModUtilities,      ONLY: check_allocate
+    use PT_ModProc,   ONLY: warn_more_proc
+    integer :: iVertex, iError
+    character(len=*), parameter:: NameSub = 'init_stand_alone'
+    !--------------------------------------------------------------------------
+    ! Allocate here if stand alone
+    allocate(MhData_VIB(LagrID_:nMhData, 1:nVertexMax, nLine))
+    !
+    MhData_VIB(1:nMhData,:,:) = 0.0
+    !
+    ! reset lagrangian ids
+    !
+    do iVertex = 1, nVertexMax
+       MhData_VIB(LagrID_, iVertex, 1:nLine) = real(iVertex)
+    end do
+    ! Allocate auxiliary State vector
+    allocate(State_VIB(nMhData+1:nVar, 1:nVertexMax, nLine))
+    State_VIB = -1
+    allocate(nVertex_B(nLine))
+    nVertex_B = 0
+    allocate(FootPoint_VB(LagrID_:Length_, nLine))
+    FootPoint_VB = -1
+    allocate(Used_B(nLine)); Used_B = .true.
+>>>>>>> refs/remotes/origin/main
 
       ! allocate the grid used in this model
       use ModUtilities,      ONLY: check_allocate

@@ -56,8 +56,9 @@ contains
             dPNorm = (PnormMax - PnormMin) / (NumPNorm-1)
             do i = 1, NumPNorm
                 Pnorm(i) = 10**(PnormMin + dPNorm * (i-1) )
-                f(i) = Pnorm(i) ** PowerLaw
-                Tacc(i) = 3.0 * Dxx0 * (U1**-1.0 + U2**-1.0) / (U1 - U2) * log(Pnorm(i))
+                f(i) = Pnorm(i)**PowerLaw
+                Tacc(i) = 3.0 * Dxx0 * (U1**(-1.0) + U2**(-1.0)) /&
+                     (U1 - U2) * log(Pnorm(i))
             end do
 
             open(801,file=OutputDir//'pnorm.dat',status='unknown')
