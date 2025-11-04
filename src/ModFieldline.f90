@@ -8,6 +8,7 @@ module PT_ModFieldline
     use PT_ModConst, ONLY: cPi, ckeV, cAU, cRsun, cProtonMass, &
                            cElectronCharge, cLightSpeed, cProtonRestEnergy
     use PT_ModSize,  ONLY: nVertexMax
+    use PT_ModShock, ONLY: dLogRho_II, dLogRhoOld_II, dLogRhoThreshold
     
     implicit none
     save
@@ -20,16 +21,19 @@ module PT_ModFieldline
     real, allocatable :: PreviousState(:, :), CurrentState(:,:), &
                          MhdState1(:, :), MhdState2(:,:)
 
-    integer, parameter :: nStateVar    = 6, nStateAdvect = 5, &
-                          RhoState_    = 1, &
+    integer, parameter :: nStateVar    = 8, nStateAdvect = 7, &
+                          dLogRho_     = 1, &
                           BState_      = 2, &
                           dBState_     = 3, &
-                          dSState_     = 4, &
+                          RhoState_    = 4, &
                           UState_      = 5, &
-                          RState_      = 6
+                          dSState_     = 6, &
+                          TState_      = 7, &
+                          RState_      = 8
                           
     real    :: PreviousTime, CurrentTime
-    integer :: iShock1, iShock2
+    integer :: iShockNew, iShock1, iShock2
+    integer :: iShock1Up, iShock2Up, iShock1Down, iShock2Down
     integer :: WidthUp, WidthDown
 
 contains
@@ -74,6 +78,8 @@ contains
         MhdState1(dSState_, :) = State_VIB(DOld_, :, iLine)
         MhdState1(UState_, :) = State_VIB(UOld_, :, iLine)
         MhdState1(RState_, :) = State_VIB(ROld_, :, iLine)
+        MhdState1(TState_, :) = State_VIB(TOld_, :, iLine)
+        MhdState1(dLogRho_, :) = dLogRhoOld_II(:, iLine)
 
         MhdState2(RhoState_, :) = MhData_VIB(Rho_, :, iLine)
         MhdState2(BState_, :) = State_VIB(B_, :, iLine)
@@ -81,6 +87,8 @@ contains
         MhdState2(dSState_, :) = State_VIB(D_, :, iLine)
         MhdState2(UState_, :) = State_VIB(U_, :, iLine)
         MhdState2(RState_, :) = State_VIB(R_, :, iLine)
+        MhdState2(TState_, :) = MhData_VIB(T_, :, iLine)
+        MhdState2(dLogRho_, :) = dLogRho_II(:, iLine)
 
         PreviousState = MhdState1
         PreviousTime = PTTime
@@ -89,67 +97,119 @@ contains
         CurrentState = PreviousState
     
         iShock1 = iShock_IB(ShockOld_, iLine)
+        iShock1Up = iShock_IB(ShockUpOld_, iLine)
+        iShock1Down = iShock_IB(ShockDownOld_, iLine)
+        
         iShock2 = iShock_IB(Shock_, iLine)
+        iShock2Up = iShock_IB(ShockUp_, iLine)
+        iShock2Down = iShock_IB(ShockDown_, iLine)
 
     end subroutine
     !============================================================================
-    subroutine advect_fieldline(Alpha, iShockNew, NewTime)
+    subroutine advect_fieldline(Alpha, iShockNewIn, NewTime)
         real, intent(in) :: Alpha, NewTime
-        integer, intent(in) :: iShockNew
+        integer, intent(in) :: iShockNewIn
 
         integer :: iVar, iLagr
         integer :: iShockNewUp, iShockNewDown
 
         real :: Slope, Ratio
+        real :: dLogRhoMax
 
+        iShockNew = iShockNewIn
         PreviousState = CurrentState
         PreviousTime = CurrentTime
         CurrentState = 0.0
         CurrentTime = NewTime
 
-        ! Interpolate widths in time
-        WidthUp   = floor((1-Alpha) * (iShock_IB(ShockUpOld_, iLine) - iShock1) + &
-                            Alpha   * (iShock_IB(ShockUp_, iLine) - iShock2))
-        WidthDown = floor((1-Alpha) * (iShock1 - iShock_IB(ShockDownOld_, iLine)) + &
-                            Alpha   * (iShock2 - iShock_IB(ShockDown_, iLine)))
+        ! Interpolate width of shock in time
+        WidthUp   = floor((1-Alpha) * (iShock1Up - iShock1) + &
+                            Alpha   * (iShock2Up - iShock2))
+        WidthDown = floor((1-Alpha) * (iShock1 - iShock1Down) + &
+                            Alpha   * (iShock2 - iShock2Down))
         ! check bounds
-        WidthDown = min(iShock1 - MinLagr(iLine), WidthDown)
+        WidthDown = min(iShockNew - MinLagr(iLine), WidthDown)
         WidthUp   = min(WidthUp, MaxLagr(iLine) - iShock2)
 
-        ! write(*,*) iShock_IB(ShockDownOld_, iLine), iShock1, iShock_IB(ShockUpOld_, iLine)
-        ! write(*,*) iShock_IB(ShockDown_, iLine), iShock2, iShock_IB(ShockUp_, iLine)
-        ! write(*,*) iShockNew, WidthDown, WidthUp
-        ! write(*,*) '# --------------------------------------- #'
+        ! !  no shock
+        if(WidthDown.eq.0.and.WidthUp.eq.0) then
+            CurrentState = MhdState2
+            return
+        end if
+
+        ! New indices of shock extent
+        iShockNewUp = iShockNew + WidthUp
+        iShockNewDown = iShockNew - WidthDown
+
+        ! Take log of B, dB, and rho before interpolation - helps at inner boundary
+        where(MhdState1(BState_:RhoState_, :).ne.0) &
+            MhdState1(BState_:RhoState_, :) = log10(MhdState1(BState_:RhoState_, :))
+        where(MhdState2(BState_:RhoState_, :).ne.0) &
+            MhdState2(BState_:RhoState_, :) = log10(MhdState2(BState_:RhoState_, :))
     
         ! interpolate fieldline in time
         CurrentState = (1 - Alpha) * MhdState1 + Alpha * MhdState2
 
+        ! Do not advect shock during time period when shock first appears on fieldline
+        ! Undo log and return time interpolated fieldline
+        if((iShock1-iShock1Down).eq.0) then 
+            where(MhdState1(BState_:RhoState_, :).ne.0) &
+                MhdState1(BState_:RhoState_, :) = 10.0**MhdState1(BState_:RhoState_, :)
+            where(MhdState2(BState_:RhoState_, :).ne.0) &
+                MhdState2(BState_:RhoState_, :) = 10.0**MhdState2(BState_:RhoState_, :)
+            where(CurrentState(BState_:RhoState_, :).ne.0) &
+                CurrentState(BState_:RhoState_, :) = 10.0**CurrentState(BState_:RhoState_, :)           
+            return
+        end if
+
+        ! if(iShock1-WidthDown.lt.MinLagr(iLine)) then
+        !     ! Case when shock first appears
+        !     CurrentState(1:nStateAdvect, iShockNewDown:iShockNewUp) = &
+        !         (1-alpha) * MhdState1(1:nStateAdvect, iShockNewDown:iShockNewUp) + &
+        !         alpha * MhdState2(1:nStateAdvect, iShock2-WidthDown:iShock2+WidthUp)
+        ! else
+        
         !Insert advected shock
-        CurrentState(1:nStateAdvect, iShockNew-WidthDown:iShockNew+WidthUp) = &
+        CurrentState(1:nStateAdvect, iShockNewDown:iShockNewUp) = &
             (1-alpha) * MhdState1(1:nStateAdvect, iShock1-WidthDown:iShock1+WidthUp) + &
-              alpha   * MhdState2(1:nStateAdvect, iShock2-WidthDown:iShock2+WidthUp)
+            alpha   * MhdState2(1:nStateAdvect, iShock2-WidthDown:iShock2+WidthUp)
 
-        ! Need to smooth over previous shock regions and ensure smooth interpolation
-        ! with inserted shock!
+        ! end if
 
-        ! do iVar = 1, nStateAdvect
-            
-        !     Ratio = CurrentState(iVar, iShockNew-WidthDown-1) / &
-        !             CurrentState(iVar, iShockNew-WidthDown) 
-        !     CurrentState(iVar, iShockNew-WidthDown:iShockNew+WidthUp) = &
-        !         CurrentState(iVar, iShockNew-WidthDown:iShockNew+WidthUp) * Ratio
-            ! Ratio =  CurrentState(iVar,iShockNew+WidthUp+1) / &
-            !          CurrentState(iVar, iShockNew+WidthUp) 
-            ! CurrentState(iVar, iShockNew:iShockNew+WidthUp) = &
-            !     CurrentState(iVar, iShockNew:iShockNew+WidthUp) * Ratio
-            ! do iLagr = iShockNew-2, iShockNew+2
-            !     CurrentState(iVar, iLagr) = sum(CurrentState(iVar,iLagr-1:iLagr+1)) / 3.0
-            ! end do
+        ! interpolate over old mhd shock regions
+        do iVar = 1, nStateAdvect
+            Slope = (CurrentState(iVar, iShockNewDown)-CurrentState(iVar, iShock1Down)) / &
+                (iShockNewDown - iShock1Down)
+            do iLagr = iShock1Down,  iShockNewDown
+                CurrentState(iVar, iLagr) = CurrentState(iVar, iShock1Down) + &
+                    Slope * (iLagr - iShock1Down)
+            end do
 
-        ! end do
+            Slope = (CurrentState(iVar, iShock2Up)-CurrentState(iVar, iShockNewUp-1)) / &
+                (iShock2Up - iShockNew-WidthUp+1)
+            do iLagr = iShockNewUp-1, iShock2Up
+                CurrentState(iVar, iLagr) = CurrentState(iVar, iShockNewUp-1) + &
+                    Slope * (iLagr - iShockNew-WidthUp+1)
+            end do
+
+        end do
+
+        ! Undo log
+        where(MhdState1(BState_:RhoState_, :).ne.0) &
+            MhdState1(BState_:RhoState_, :) = 10.0**MhdState1(BState_:RhoState_, :)
+        where(MhdState2(BState_:RhoState_, :).ne.0) &
+            MhdState2(BState_:RhoState_, :) = 10.0**MhdState2(BState_:RhoState_, :)
+        where(CurrentState(BState_:RhoState_, :).ne.0) &
+            CurrentState(BState_:RhoState_, :) = 10.0**CurrentState(BState_:RhoState_, :)
+
 
         ! SHOCK SHARPENING ALGORITHM GOES HERE
-    
+        ! Currently increase dLogRho by the maximum dLogRho calculated from the advected rho
+        ! ------------------------------------------------------------------- !
+        dLogRhoMax = maxval(log(CurrentState(RhoState_, :)/PreviousState(RhoState_, :))/ (CurrentTime-PreviousTime))
+        CurrentState(dLogRho_, iShockNewDown:iShockNewUp) = CurrentState(dLogRho_, iShockNewDown:iShockNewUp) * &
+            dLogRhoMax / maxval(CurrentState(dLogRho_, iShockNewDown:iShockNewUp))
+        ! ------------------------------------------------------------------- !
     end subroutine advect_fieldline
     !============================================================================
     subroutine interpolate_statevar(Time, LagrCoord, Var, InterpValue)
@@ -159,8 +219,8 @@ contains
         
         integer :: iLagr
         real :: iLagrFrac, TimeFrac, f1, f2
+        
         ! bilinear interpolation in time and space
-
         TimeFrac = (Time - PreviousTime) / (CurrentTime - PreviousTime)
 
         ! get integer and fractional parts of lagrangian coordinate
@@ -169,7 +229,7 @@ contains
 
         ! if either are less than 1 return -1.0
         ! should only occur after particle timestep and particle location is
-        ! being calculated from new lagrangian coordinate
+        ! calculated from new lagrangian coordinate
         ! boundary condition check occurs immediately after
         if(iLagr.lt.MinLagr(iLine).or.iLagr+1.gt.MaxLagr(iLine)) then
             InterpValue = -1.0    
@@ -195,6 +255,7 @@ contains
         real :: iLagrFrac, TimeFrac, f1, f2
         real :: RhoCurrent, RhoPrevious
 
+        ! currently not used
         iLagr = floor(LagrCoord)
         iLagrFrac = LagrCoord - iLagr
 
@@ -204,7 +265,7 @@ contains
                      PreviousState(RhoState_, iLagr+1) * iLagrFrac                    
         
         dLogRhodTau = log(RhoCurrent/RhoPrevious) / (CurrentTime - PreviousTime)
-        
+   
     end subroutine calculate_dLogRho
     !============================================================================
     subroutine get_dxx(Time, LagrCoord, Momentum, Dxx)
@@ -222,16 +283,17 @@ contains
         end if
 
         call interpolate_statevar(Time, LagrCoord, RState_, R)
-        call interpolate_statevar(Time, LagrCoord, BState_, B)
-        call interpolate_statevar(Time, LagrCoord, dBState_, dB)
-        call get_mhd_dxx(R, B, dB, Momentum, Dxx)
+        ShockR = CurrentState(RState_, iShockNew)
 
-        ! not quite right - shock location not moving during sharpening...
-        ! ShockR = CurrentState(RState_, iShock2)
-        ! ShockR + 0.5?
-        ! if(R.gt.(ShockR+0.5)) then
-        !     call get_psp_dxx(R, Momentum, Dxx)
-        ! end if
+        ! upstream of shock - use empirical PSP values from Chen et al 2024
+        if(R.gt.(ShockR+0.5)) then
+            call get_psp_dxx(R, Momentum, Dxx)
+        ! downstream of shock - use MHD turbulence
+        else
+            call interpolate_statevar(Time, LagrCoord, BState_, B)
+            call interpolate_statevar(Time, LagrCoord, dBState_, dB)
+            call get_mhd_dxx(R, B, dB, Momentum, Dxx)
+        end if
 
     end subroutine get_dxx
     !============================================================================ 
@@ -241,20 +303,20 @@ contains
         real :: ConstantFactor = 81.0 / (7.0*cPi) * (0.5/cPi)**(2.0/3.0)
         real :: Velocity, Lmax, Btotal, MeanFreePath
         
-        ! relativistic velocity
-        Velocity = Momentum / cProtonMass
-        Velocity = sqrt(Velocity**2 / (1 + (Velocity/cLightSpeed)**2))
+        ! relativistic velocity)
+        Velocity = Momentum / sqrt(cProtonMass**2.0 + &
+                   (Momentum/cLightSpeed)**2.0)
 
         ! Calculate mean free path
-        ! TODO: add maximum dB/B - shouldn't be more than 1
         Lmax = 0.4*R*cRsun
         Btotal = sqrt(B**2 + dB)
 
+        ! dB limiter
         ! if((Btotal/sqrt(dB)).lt.1.0) Btotal = sqrt(dB)
         ! if((Btotal**2/dB).gt.1) write(*,*) 'B/dB > 1'
+
         MeanFreePath = ConstantFactor * Btotal**2 * &
                         (Momentum*Lmax**2/(B * cElectronCharge))**(1.0/3.0) / dB
-
         ! Calculate Dxx 
         Dxx = MeanFreePath * Velocity / 3.0
         Dxx = max(Dxx, 1.0d4 * cRsun)
@@ -266,7 +328,7 @@ contains
         real, intent(out) :: Dxx
 
         real :: Dxx0, Energy
-
+        ! Chen et al., 2024
         Dxx0 = 5.16d14 ! [m^2/s]
         Energy = sqrt((Momentum*cLightSpeed)**2 + cProtonRestEnergy**2) - cProtonRestEnergy
 
@@ -276,6 +338,7 @@ contains
     !============================================================================   
     subroutine get_sde_coeffs_euler(X_I, Time, TimeStep, DriftCoeff, DiffCoeff)
         use PT_ModSize, only: nDim
+        use PT_ModProc, only: iProc
 
         real, intent(in) :: X_I(nDim), Time
         real, intent(out) :: Timestep, DriftCoeff(nDim), DiffCoeff(nDim)
@@ -290,8 +353,9 @@ contains
         Momentum = (3.0*X_I(2))**(1.0/3.0)
 
         ! Need to figure out where to put X_I index variables - hardcoded 1 = LagrCoord_
-        call calculate_dLogRho(X_I(1), dLogRhodTau)
-        
+        ! call calculate_dLogRho(X_I(1), dLogRhodTau)
+        call interpolate_statevar(Time, X_I(1), dLogRho_, dLogRhodTau)
+
         ! get values at particle current location
         call interpolate_statevar(Time, X_I(1), BState_, B)
         call interpolate_statevar(Time, X_I(1), dSState_, dS)
@@ -305,7 +369,6 @@ contains
         ! convert from [Rsun] to [m]
         dS = dS * cRsun
         dSup = dSup * cRsun
-
 
         ! lagr coord sde coefficients
         DriftCoeff(1) = B * ((DxxUp / (Bup * dSup)) - (Dxx / (B * dS))) / dS
@@ -325,8 +388,10 @@ contains
         real, intent(out) :: Weight
 
         real :: Temp, Rho
-        ! will need to change to Weight = T*rho
-        Weight = 1.0
+        call interpolate_statevar(Time, LagrCoord, TState_, Temp)
+        call interpolate_statevar(Time, LagrCoord, RhoState_, Rho)
+
+        Weight = Temp*Rho
     end subroutine compute_weight
     !============================================================================
     subroutine get_particle_location(Time, LagrCoord, R)
@@ -347,7 +412,6 @@ contains
 
         call interpolate_statevar(Time, LagrCoord, dSState_, dS)
         call interpolate_statevar(Time, LagrCoord, BState_, B)
-        ! use B or Bsteepen????
         ConversionFactor = B / dS
     end subroutine compute_conversion_factor
     !============================================================================
@@ -359,10 +423,10 @@ contains
         IsOutside = .false.
 
         ! reflecting boundary condition - inner spatial boundary
-        ! if(LagrCoord.lt.MinLagr(iLine)) then
-        !     LagrCoord = MinLagr(iLine) + 1.0
-        !     call interpolate_statevar(Time, LagrCoord, RState_, R)
-        ! end if
+        if(LagrCoord.lt.MinLagr(iLine)) then
+            LagrCoord = MinLagr(iLine) + 1.0
+            call interpolate_statevar(Time, LagrCoord, RState_, R)
+        end if
 
         ! absorbing boundary conditions - outer spatial boundary
         if(LagrCoord.lt.MinLagr(iLine)) IsOutside = .true.
@@ -371,12 +435,13 @@ contains
       
     end subroutine check_boundary_conditions
     !============================================================================
-    subroutine save_fieldline_data(iShockNew, NextTimeStep)
-        integer, intent(in) :: iShockNew
+    subroutine save_fieldline_data(iProgress, NextTimeStep)
+        integer, intent(in) :: iProgress
         real, intent(in) :: NextTimeStep
         character(len = 20) :: OutString
+        integer :: iVar
 
-        write(OutString, *) int(NextTimeStep)
+        write(OutString, '(I6.6, A, I3.3)') int(DataInputTime), '_', iProgress
         OutString = adjustl(OutString)
 
         ! Current shock location, shock location at end of coupling time,
@@ -385,43 +450,19 @@ contains
         write(102, *) PTTime, &
                     DataInputTime, PreviousTime, CurrentTime, &
                     iShockNew, iShock1, iShock2, MinLagr(iLine), MaxLagr(iLine), &
-                    WidthUp, WidthDown, iShock_IB(ShockDownOld_, iLine), &
-                    iShock_IB(ShockUpOld_, iLine), iShock_IB(ShockDown_, iLine), &
-                    iShock_IB(ShockUp_, iLine)
+                    WidthUp, WidthDown, iShock1Down, &
+                    iShock1Up, iShock2Down, &
+                    iShock2Up
         close(102)
         ! ------------------------------------------------------------------- 
         open(101, file = 'PT/IO2/'//'shockdata_'//trim(OutString)//'.dat')
         
-        write(101, '(7000e15.6)') MhdState1(RhoState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') MhdState2(RhoState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') PreviousState(RhoState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') CurrentState(RhoState_, MinLagr(iLine):MaxLagr(iLine))
-        
-        write(101, '(7000e15.6)') MhdState1(dSState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') MhdState2(dSState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') PreviousState(dSState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') CurrentState(dSState_, MinLagr(iLine):MaxLagr(iLine))
-
-        write(101, '(7000e15.6)') MhdState1(dBState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') MhdState2(dBState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') PreviousState(dBState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') CurrentState(dBState_, MinLagr(iLine):MaxLagr(iLine))
-
-        write(101, '(7000e15.6)') MhdState1(RState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') MhdState2(RState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') PreviousState(RState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') CurrentState(RState_, MinLagr(iLine):MaxLagr(iLine))
-
-        write(101, '(7000e15.6)') MhdState1(UState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') MhdState2(UState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') PreviousState(UState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') CurrentState(UState_, MinLagr(iLine):MaxLagr(iLine))
-
-        write(101, '(7000e15.6)') MhdState1(BState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') MhdState2(BState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') PreviousState(BState_, MinLagr(iLine):MaxLagr(iLine))
-        write(101, '(7000e15.6)') CurrentState(BState_, MinLagr(iLine):MaxLagr(iLine))
-
+        do iVar = 1, nStateVar
+            write(101, '(7000e15.6)') MhdState1(iVar, MinLagr(iLine):MaxLagr(iLine))
+            write(101, '(7000e15.6)') MhdState2(iVar, MinLagr(iLine):MaxLagr(iLine))
+            write(101, '(7000e15.6)') PreviousState(iVar, MinLagr(iLine):MaxLagr(iLine))
+            write(101, '(7000e15.6)') CurrentState(iVar, MinLagr(iLine):MaxLagr(iLine))
+        end do
         close(101)
 
     end subroutine save_fieldline_data

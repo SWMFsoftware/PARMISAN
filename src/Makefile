@@ -26,8 +26,7 @@ OBJECTS = \
 	ModUnit.o \
 	ModAdvance.o \
 	ModDistribution.o \
-	ModTestFieldline.o \
-	ModCreateSyntheticData.o 
+	ModTestFieldline.o
 
 ModSize.f90: ModSize_orig.f90
 	cp -f ModSize_orig.f90 ModSize.f90

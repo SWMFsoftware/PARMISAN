@@ -11,19 +11,12 @@ module PT_ModGrid
 #ifdef OPENACC
    use ModUtilities, ONLY: norm2
 #endif
-<<<<<<< HEAD
    use ModUtilities, ONLY: CON_stop
    use PT_ModSize,  ONLY: nVertexMax, nDim
    use PT_ModProc,  ONLY: iProc
    use PT_ModConst, ONLY: cTwoPi, cPi
    use PT_ModConst, ONLY: cMu, cRsun, cProtonMass
    use PT_ModTime, ONLY: PTTime, DataInputTime
-=======
-  use ModUtilities, ONLY: CON_stop
-  use PT_ModSize,  ONLY: nVertexMax
-  use PT_ModProc,  ONLY: nProc, iProc, iError
-  use ModNumConst, ONLY: cTwoPi, cPi
->>>>>>> refs/remotes/origin/main
 
    implicit none
    SAVE
@@ -37,7 +30,6 @@ module PT_ModGrid
    public:: get_other_state_var ! Auxiliary components of state vector
    public:: check_line_ishock   ! check if iShock exceeds iEnd of the field line
 
-<<<<<<< HEAD
    ! Coordinate system and geometry
    character(len=3), public :: TypeCoordSystem = 'HGR'
    !
@@ -143,7 +135,7 @@ module PT_ModGrid
          DOld_       =24, &
          dBOld_      =25, &
          ROld_       =26, &
-         LagrOld_    =27
+         TOld_       =27
 
    ! variable names
    character(len=10), public, parameter:: NameVar_V(LagrID_:nVar)&
@@ -174,41 +166,9 @@ module PT_ModGrid
          'DOld      ', &
          'dBOld     ', &
          'ROld      ', &
-         'LagrOld   ' ]
+         'TOld      ']
 
    logical:: DoInit = .true.
-=======
-  ! Coordinate system and geometry
-  character(len=3), public :: TypeCoordSystem = 'HGR'
-
-  ! Grid info
-  ! Angular grid at origin surface
-  integer, public :: nLat = 4  ! Number of lines along Lat grid
-  integer, public :: nLon = 4  ! Number of lines along Lon grid
-  integer:: iLatOffset = 0     ! Offset of line index along Lat grid
-  integer:: iLonOffset = 0     ! Offset of line index along Lon grid
-
-  ! Total number of magnetic field lines on all PEs (a product of nLat*nLon)
-  integer, public :: nLineAll = 16
-  !
-  ! All nodes are enumerated. The last node number on the previous proc
-  ! (iProc-1)
-  ! equals (iProc*nLineAll)/nProc. Store this:
-  integer, public :: iLineAll0
-  ! The nodes on a given PE have node numbers ranging from iLineAll0 +1 to
-  ! iNodeLast =((iProc + 1)*nLineAll)/nProc. The iLine index to enumerate
-  ! lines on a given proc ranges from 1 to iNodeLast.
-  ! nLine = nNodeLast - iLineAll0 is the number of
-  ! lines (blocks) on this processor. For iLine=1:nLine
-  ! iLineAll = iLineAll0+1:iNodeLast
-  integer, public :: nLine
-  ! Number of particles (vertexes, Lagrangian meshes) per line (line):
-  integer, public,     pointer :: nVertex_B(:)
-  !
-  ! Function converting line number to lon-lat location of the line
-  !
-  public :: iBlock_to_lon_lat
->>>>>>> refs/remotes/origin/main
 
 contains
    !============================================================================
@@ -257,7 +217,6 @@ contains
       use ModUtilities,      ONLY: check_allocate
       use PT_ModProc,        ONLY: nProc
 
-<<<<<<< HEAD
       integer:: iError
       integer:: iNodeLast
 
@@ -289,77 +248,15 @@ contains
       ! check consistency
       if(nLat <= 0 .or. nLon <= 0)&
          call CON_stop(NameSub//': Origin surface grid is invalid')
-=======
-    character(len=*), parameter:: NameSub = 'init'
-    !--------------------------------------------------------------------------
-    if(.not.DoInit) RETURN
-    DoInit = .false.
-    ! check consistency
-    if(nLat <= 0 .or. nLon <= 0) &
-         call CON_stop(NameSub//': Origin surface grid is invalid')
-
-    ! distribute nodes between processors
-    if(nLineAll >= nProc) then
-       iLineAll0 = ( iProc   *nLineAll)/nProc
-       iNodeLast = ((iProc+1)*nLineAll)/nProc
-       nLine = iNodeLast-iLineAll0
-    else
-       ! there is one processor for each field line: we keep
-       ! iProc = 0~nLineAll-1 working and others for the last line
-       ! we also send the warning message for this over-request
-       nLine = 1
-       if(iProc < nLineAll) then
-          iLineAll0 = iProc
-       else
-          ! Some work/trial has been done, but just partially. One can refer
-          ! to the code version (915'th commit) on August 22, 2024.
-          iLineAll0 = nLineAll-1
-          call warn_more_proc
-          write(*,*) "Here we keep iProc's >", nLineAll, 'on the last line.'
-       end if
-    end if
-    ! allocate data and grid containers
-    allocate(iShock_IB(nShockParam, nLine), stat=iError)
-    call check_allocate(iError, NameSub//'iShock_IB')
-    iShock_IB = NoShock_
->>>>>>> refs/remotes/origin/main
 
       ! allocate data and grid containers
       allocate(iShock_IB(nShockParam, nLine), stat=iError)
       call check_allocate(iError, NameSub//'iShock_IB')
       iShock_IB = NoShock_
 
-<<<<<<< HEAD
    end subroutine init
    !============================================================================
    subroutine init_stand_alone
-=======
-    ! allocate the grid used in this model
-    use ModUtilities,      ONLY: check_allocate
-    use PT_ModProc,   ONLY: warn_more_proc
-    integer :: iVertex, iError
-    character(len=*), parameter:: NameSub = 'init_stand_alone'
-    !--------------------------------------------------------------------------
-    ! Allocate here if stand alone
-    allocate(MhData_VIB(LagrID_:nMhData, 1:nVertexMax, nLine))
-    !
-    MhData_VIB(1:nMhData,:,:) = 0.0
-    !
-    ! reset lagrangian ids
-    !
-    do iVertex = 1, nVertexMax
-       MhData_VIB(LagrID_, iVertex, 1:nLine) = real(iVertex)
-    end do
-    ! Allocate auxiliary State vector
-    allocate(State_VIB(nMhData+1:nVar, 1:nVertexMax, nLine))
-    State_VIB = -1
-    allocate(nVertex_B(nLine))
-    nVertex_B = 0
-    allocate(FootPoint_VB(LagrID_:Length_, nLine))
-    FootPoint_VB = -1
-    allocate(Used_B(nLine)); Used_B = .true.
->>>>>>> refs/remotes/origin/main
-
       ! allocate the grid used in this model
       use ModUtilities,      ONLY: check_allocate
       integer :: iVertex, iError
@@ -376,7 +273,7 @@ contains
 
       ! Allocate auxiliary State vector
       allocate(State_VIB(nMhData+1:nVar, 1:nVertexMax, nLine))
-      State_VIB = -1
+      State_VIB = 0.0
 
       allocate(nVertex_B(nLine))
       allocate(nVertex_BOld(nLine))
@@ -387,10 +284,10 @@ contains
       allocate(MaxLagrOld(nLine))
       allocate(MinLagr(nLine))
       allocate(MaxLagr(nLine))
-      MinLagrOld = 0
-      MinLagr = 0
-      MaxLagrOld = 0
-      MaxLagr = 0
+      MinLagrOld = 1
+      MinLagr = 1
+      MaxLagrOld = 1
+      MaxLagr = 1
 
       allocate(FootPoint_VB(LagrID_:Length_, nLine))
       FootPoint_VB = -1
@@ -433,7 +330,7 @@ contains
          iShock_IB(ShockOld_, iLine) = iShock_IB(Shock_, iLine)
          iShock_IB(ShockDownOld_, iLine) = iShock_IB(ShockDown_, iLine)
          iShock_IB(ShockUpOld_, iLine)   = iShock_IB(ShockUp_, iLine)
-
+         
          State_VIB(RhoOld_, i1:i2, iLine) = MhData_VIB(Rho_, i1:i2, iLine)
          State_VIB(UOld_, i1:i2, iLine) = State_VIB(U_, i1:i2, iLine)
          State_VIB(BOld_, i1:i2, iLine) = State_VIB(B_, i1:i2, iLine)
@@ -441,7 +338,7 @@ contains
          State_VIB(DOld_, i1:i2, iLine) = State_VIB(D_, i1:i2, iLine)
          State_VIB(dBOld_, i1:i2, iLine) = State_VIB(dB_, i1:i2, iLine)
          State_VIB(ROld_, i1:i2, iLine) = State_VIB(R_, i1:i2, iLine)
-         State_VIB(LagrOld_, i1:i2, iLine) = MhData_VIB(LagrID_, i1:i2, iLine)
+         State_VIB(TOld_, i1:i2, iLine) = MhData_VIB(T_, i1:i2, iLine)
          
          nVertex_BOld(iLine) = nVertex_B(iLine)
          MinLagrOld(iLine) = MinLagr(iLine)
@@ -456,16 +353,16 @@ contains
    !============================================================================
    subroutine get_other_state_var
 
-      integer:: iLine, iVertex, iEnd
+      integer:: iLine, iVertex
       integer:: iAux1, iAux2
       real   :: XyzAux1_D(x_:z_), XyzAux2_D(x_:z_)
       character(len=*), parameter:: NameSub = 'get_other_state_var'
       !--------------------------------------------------------------------------
       do iLine = 1, nLine
          if(.not.Used_B(iLine))CYCLE
-         iEnd = MaxLagr(iLine)
 
          do iVertex = MinLagr(iLine), MaxLagr(iLine)
+            
             ! Heliocentric Distance
             State_VIB(R_, iVertex, iLine) = &
                norm2(MhData_VIB(X_:Z_, iVertex, iLine))
@@ -478,12 +375,14 @@ contains
             ! Velocity vector along fieldline
             State_VIB(U_,iVertex,iLine) = sum(MhData_VIB(Ux_:Uz_,iVertex,iLine) * &
                      MHData_VIB(Bx_:Bz_,iVertex,iLine)) / State_VIB(B_,iVertex,iLine)
+            
             ! distance between lagrangian points
             if(iVertex /= MaxLagr(iLine))then
                State_VIB(D_, iVertex, iLine) = norm2(&
                   MhData_VIB(X_:Z_, iVertex  , iLine) - &
                   MhData_VIB(X_:Z_, iVertex+1, iLine))
             end if
+
             ! distance from the beginning of the line
             if(iVertex == MinLagr(iLine))then
                State_VIB(S_, iVertex, iLine) = 0.0
@@ -494,6 +393,16 @@ contains
             end if
 
          end do
+         ! correction if lagr coord is added
+         if(MinLagrOld(iLine).gt.MinLagr(iLine)) then
+               State_VIB(RhoOld_, MinLagr(iLine), iLine) = MhData_VIB(Rho_, MinLagr(iLine), iLine)
+               State_VIB(UOld_, MinLagr(iLine), iLine) = State_VIB(U_, MinLagr(iLine), iLine)
+               State_VIB(BOld_, MinLagr(iLine), iLine) = State_VIB(B_, MinLagr(iLine), iLine)
+               State_VIB(DOld_, MinLagr(iLine), iLine) = State_VIB(D_, MinLagr(iLine), iLine)
+               State_VIB(dBOld_, MinLagr(iLine), iLine) = State_VIB(dB_, MinLagr(iLine), iLine)
+               State_VIB(ROld_, MinLagr(iLine), iLine) = State_VIB(R_, MinLagr(iLine), iLine)
+         end if
+
       end do
 
    end subroutine get_other_state_var

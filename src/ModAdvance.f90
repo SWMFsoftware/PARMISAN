@@ -66,7 +66,7 @@ contains
                 ! advect shock
                 call advect_fieldline(Alpha, iShockNew, NextTimeStep)
 
-                if(DoOutputShock) call save_fieldline_data(iShockNew, NextTimeStep)
+                if(DoOutputShock) call save_fieldline_data(iProgress, NextTimeStep)
 
                 ! inject particles at shock location at start of subinterval
                 call inject_particles(iLine, NextTimeStep - DtProgress, LagrInject)
@@ -80,6 +80,7 @@ contains
             
             call MPI_BARRIER(iComm, iError)
             call save_distribution_function(iIter + 1, TimeLimit)
+
         end do LINE
 
     end subroutine advance

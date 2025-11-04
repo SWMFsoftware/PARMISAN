@@ -81,103 +81,8 @@ contains
          allocate(Particle_IV(1:MaxTotalParticles, 1:nVar))
       end if
 
-<<<<<<< HEAD
       allocate(nParticleOnLine(1:nLine))
       nParticleOnLine = 0
-=======
-      ! Get particle initial time, radial distance, and distance along fieldline    
-      do i = 1, nParticlePerProc
-         call get_random_shock_location(Particle_V(i, Time_), Particle_V(i, LagrCoord_), Particle_V(i, R_))
-         Particle_V(i, Energy_) = E0
-         call energy_to_momentum(Particle_V(i, Energy_), Particle_V(i, Momentum_))
-         ! Get weight: T*rho
-         ! TODO: check to see if rho is proton only, if not, need number density of protons
-         ! RIGHT NOW WEIGHT IS SET TO 1
-         call compute_weight(Particle_V(i, Time_), Particle_V(i, LagrCoord_), Particle_V(i, Weight_))
-
-         ! particle splitting variables
-         ! parent index = index of first parent (to track and limit maximum number of splits)
-         ! numchildren = number of child  particles (to track and limit maximum number of splits)
-         ! splitlevel = number of splits removed from first parent (to track next split)
-         Particle_V(i, ParentIndex_) = i
-         Particle_V(i, NumChildren_) = 0
-         Particle_V(i, SplitLevel_) = 1
-      end do
-
-   end subroutine initialize_particles
-   !============================================================================
-   subroutine check_split(iParticle, DoSplit)
-      integer, intent(in) :: iParticle
-      logical, intent(out) :: DoSplit
-
-      integer :: SplitLevel, ParentNumChildren
-
-      DoSplit = .false.
-      ! current energy threshold index of splitting
-      SplitLevel = int(Particle_V(iParticle, SplitLevel_))
-      ! total number of children from first parent
-      ParentNumChildren = int(Particle_V(int(&
-           Particle_V(iParticle, ParentIndex_)), NumChildren_))
-      
-      ! if particle crosses next energy threshold
-      ! if max split energy threshold has not yet been reached
-      ! if max child particles per first parent has not yet been reached
-      if(SplitLevel.lt.nSplitLev.and. &
-         Particle_V(iParticle, Energy_).gt.eSplitLev_I(SplitLevel) &
-         .and.ParentNumChildren.le.nSplitMax) DoSplit = .true.
-
-   end subroutine check_split
-   !============================================================================
-   subroutine split_particle(iParticle, nParticle)
-
-      ! index of particle being split, total number of current particles in simulation
-      integer, intent(in) :: iParticle, nParticle
-      integer :: ParentIndex
-      integer :: SplitInd
-
-      ! index of newly split particle
-      SplitInd = nParticle + 1
-      ! index of first parent
-      ParentIndex = int(Particle_V(iParticle, ParentIndex_))
-      
-      ! increase split level of current particle
-      Particle_V(iParticle, SplitLevel_) = Particle_V(iParticle, SplitLevel_) + 1
-      ! increase total number of children from first parent
-      Particle_V(ParentIndex, NumChildren_) = Particle_V(ParentIndex, NumChildren_) + 1
-
-      ! Copy particle information
-      Particle_V(SplitInd, :) = Particle_V(iParticle, :)
-
-      ! adjust weights of split particles
-      ! conserves total weight
-      Particle_V(SplitInd, Weight_) = Particle_V(SplitInd, Weight_) * 0.5
-      Particle_V(iParticle, Weight_) = Particle_V(iParticle, Weight_) * 0.5
-
-   end subroutine split_particle
-   !============================================================================
-   subroutine advance_particle(iParticle)
-      integer, intent(in) :: iParticle
-
-      ! Vectors solved by SDE
-      real :: XOld(nDim), XNew(nDim)
-
-      ! Equation advances lagrcoord and p^3/3 not p
-      XOld(LagrCoord_) = Particle_V(iParticle, LagrCoord_)
-      XOld(Momentum_)  = Particle_V(iParticle, Momentum_)**3.0 / 3.0
-      
-      ! Advance psuedo-particle one time step
-      call euler_sde(XOld, Particle_V(iParticle, Time_), Particle_V(iParticle, TimeStep_), XNew)
-      ! call milstein_sde(XOld, Particle_V(Time_), Particle_V(TimeStep_), XNew)
-
-      ! Update Lagrangian coordinate and momentum
-      Particle_V(iParticle, LagrCoord_) = XNew(LagrCoord_)
-      Particle_V(iParticle, Momentum_) = (3.0*XNew(Momentum_))**(1.0/3.0)
-      call momentum_to_energy(Particle_V(iParticle, Momentum_), Particle_V(iParticle, Energy_))
-
-      ! Update particle time
-      Particle_V(iParticle, Time_) = Particle_V(iParticle, Time_) + Particle_V(iParticle, TimeStep_)
-
->>>>>>> refs/remotes/origin/main
      
    end subroutine init
    !============================================================================
@@ -372,8 +277,7 @@ contains
       ! Advance psuedo-particle one time step
       call euler_sde(XOld, tStepMax, Particle_IV(iParticle, Time_), &
                      Particle_IV(iParticle, TimeStep_), XNew)
-      ! call milstein_sde(XOld, tStepMax, Particle_IV(Time_), Particle_IV(TimeStep_), XNew)
-
+                     
       ! Update Lagrangian coordinate and momentum
       Particle_IV(iParticle, LagrCoord_) = XNew(LagrCoord_)
       Particle_IV(iParticle, Momentum_) = (3.0*XNew(Momentum_))**(1.0/3.0)

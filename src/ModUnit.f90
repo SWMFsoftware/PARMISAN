@@ -83,8 +83,7 @@ module PT_ModUnit
        'Rsun  ', &
        'T2    ', &
        'Rsun  ', &
-       'none  ' ]
-
+       'kev   ']
   logical :: DoInit = .true.
 contains
   !============================================================================

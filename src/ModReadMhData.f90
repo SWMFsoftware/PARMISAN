@@ -163,8 +163,8 @@ contains
       
       if(.not.Used_B(iLine))then
          nVertex_B(iLine) = 0
-         MinLagr(iLine) = 0
-         MaxLagr(iLine) = 0
+         MinLagr(iLine) = 1
+         MaxLagr(iLine) = 1
          CYCLE line
       end if
       
@@ -178,8 +178,8 @@ contains
          write(*,'(a)')NameSub//': the file '//NameFile//' is not found!'
          write(*,'(a)')NameSub//': the line marked as unused'
          nVertex_B(iLine) = 0
-         MinLagr(iLine) = 0
-         MaxLagr(iLine) = 0
+         MinLagr(iLine) = 1
+         MaxLagr(iLine) = 1
          CYCLE line
       end if
       ! read the header first
@@ -221,7 +221,7 @@ contains
 
       ! zero out lagr coord with no data
       MHData_VIB(:, 1:MinLagr(iLine)-1, iLine) = 0.0
-      
+
     end do line
 
   end subroutine read_mh_data

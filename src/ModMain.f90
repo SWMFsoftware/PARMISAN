@@ -47,7 +47,6 @@ contains
       use PT_ModRandom,        ONLY: read_param_random     => read_param
       use PT_ModParticle,      ONLY: read_param_particle   => read_param
       use PT_ModSolver,        ONLY: read_param_solver     => read_param
-      use PT_ModTestFieldline, ONLY: read_param_test       => read_param
       use PT_ModShock,         ONLY: read_param_shock      => read_param
       use PT_ModFieldline,     ONLY: read_param_fieldline
 
@@ -198,7 +197,7 @@ contains
    subroutine run
 
       use PT_ModGrid,          ONLY: get_other_state_var, copy_old_state, Used_B
-      use PT_ModShock,         ONLY: get_shock_location, steepen_shock, get_divU, &
+      use PT_ModShock,         ONLY: get_shock_location, get_dLogRho, &
                                      DoTraceShock, set_initial_shock
       use PT_ModReadMhData,    ONLY: read_mh_data
       use PT_ModTime,          ONLY: PTTime, DataInputTime, iIter
@@ -215,9 +214,9 @@ contains
          ! recompute the derived components of state vector, e.g.
          ! magnitude of magnetic field and velocity etc. Smooth if needed.
          if(.not.DoReadMhData) call get_other_state_var
-
-         call set_initial_shock
+         
          if(DoRunTest) then 
+            call set_initial_shock
             call save_analytic_solution
          end if
          IsFirstCall = .false.
@@ -241,7 +240,7 @@ contains
       if(DataInputTime <= PTTime) RETURN
       
       if(DoTraceShock) then
-         call get_divU(min(DataInputTime, TimeMax))
+         call get_dLogRho
          call get_shock_location
       end if
 
