@@ -129,6 +129,7 @@ contains
    integer:: iLat, iLon
    ! size of the offset to apply compared to the previous state
    integer:: iOffset
+   integer :: startIndex = 1
    ! local value of DoOffset
    logical:: DoOffset
    ! auxilary variables to apply positive offset for appended particles
@@ -215,9 +216,17 @@ contains
          1:nVertex_B(iLine),iLine))
          
       ! Shift data such that index == lagr coordinate
-      MinLagr(iLine) = MhData_VIB(LagrID_, 1, iLine)
+      
+      ! sometimes negative lagr coords appear
+      ! ignoring those for now - consult igor
+      do while(MhData_VIB(LagrID_, startIndex, iLine).lt.1)
+         startIndex = startIndex + 1
+      end do
+      
+      MinLagr(iLine) = MhData_VIB(LagrID_, startIndex, iLine)
       MaxLagr(iLine) = MhData_VIB(LagrID_, nVertex_B(iLine), iLine)
-      MHData_VIB(:, MinLagr(iLine):MaxLagr(iLine), iLine) = MHData_VIB(:, 1:nVertex_B(iLine), iLine)
+      MHData_VIB(:, MinLagr(iLine):MaxLagr(iLine), iLine) = &
+         MHData_VIB(:, startIndex:nVertex_B(iLine), iLine)
 
       ! zero out lagr coord with no data
       MHData_VIB(:, 1:MinLagr(iLine)-1, iLine) = 0.0

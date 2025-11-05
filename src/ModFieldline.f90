@@ -207,8 +207,14 @@ contains
         ! Currently increase dLogRho by the maximum dLogRho calculated from the advected rho
         ! ------------------------------------------------------------------- !
         dLogRhoMax = maxval(log(CurrentState(RhoState_, :)/PreviousState(RhoState_, :))/ (CurrentTime-PreviousTime))
-        CurrentState(dLogRho_, iShockNewDown:iShockNewUp) = CurrentState(dLogRho_, iShockNewDown:iShockNewUp) * &
-            dLogRhoMax / maxval(CurrentState(dLogRho_, iShockNewDown:iShockNewUp))
+
+        where(CurrentState(dLogRho_, iShockNewDown:iShockNewUp).gt.0) &
+            CurrentState(dLogRho_, iShockNewDown:iShockNewUp) = &
+                CurrentState(dLogRho_, iShockNewDown:iShockNewUp) * &
+                dLogRhoMax / maxval(CurrentState(dLogRho_, iShockNewDown:iShockNewUp))
+
+        where(PreviousState(dLogRho_, :).lt.-0.0001) PreviousState(dLogRho_, :) = -0.0001
+        where(CurrentState(dLogRho_, :).lt.-0.0001) CurrentState(dLogRho_, :) = -0.0001
         ! ------------------------------------------------------------------- !
     end subroutine advect_fieldline
     !============================================================================
@@ -272,7 +278,8 @@ contains
         real, intent(in) :: Time, LagrCoord, Momentum
         real, intent(out) :: Dxx
 
-        real :: R, ShockR, B, dB
+        real :: R, B, dB
+
 
         if(UseConstantDiffusion) then
             ! constant Rs**2 is to offset the unit conversion
@@ -283,16 +290,16 @@ contains
         end if
 
         call interpolate_statevar(Time, LagrCoord, RState_, R)
-        ShockR = CurrentState(RState_, iShockNew)
 
         ! upstream of shock - use empirical PSP values from Chen et al 2024
-        if(R.gt.(ShockR+0.5)) then
+        if(R.gt.CurrentState(RState_, iShockNew+WidthUp)) then
             call get_psp_dxx(R, Momentum, Dxx)
         ! downstream of shock - use MHD turbulence
         else
             call interpolate_statevar(Time, LagrCoord, BState_, B)
             call interpolate_statevar(Time, LagrCoord, dBState_, dB)
             call get_mhd_dxx(R, B, dB, Momentum, Dxx)
+            if(R.gt.CurrentState(RState_, iShockNew-WidthDown)) Dxx = Dxx / 3.0
         end if
 
     end subroutine get_dxx
@@ -458,10 +465,10 @@ contains
         open(101, file = 'PT/IO2/'//'shockdata_'//trim(OutString)//'.dat')
         
         do iVar = 1, nStateVar
-            write(101, '(7000e15.6)') MhdState1(iVar, MinLagr(iLine):MaxLagr(iLine))
-            write(101, '(7000e15.6)') MhdState2(iVar, MinLagr(iLine):MaxLagr(iLine))
-            write(101, '(7000e15.6)') PreviousState(iVar, MinLagr(iLine):MaxLagr(iLine))
-            write(101, '(7000e15.6)') CurrentState(iVar, MinLagr(iLine):MaxLagr(iLine))
+            write(101, '(11000e15.6)') MhdState1(iVar, MinLagr(iLine):MaxLagr(iLine))
+            write(101, '(11000e15.6)') MhdState2(iVar, MinLagr(iLine):MaxLagr(iLine))
+            write(101, '(11000e15.6)') PreviousState(iVar, MinLagr(iLine):MaxLagr(iLine))
+            write(101, '(11000e15.6)') CurrentState(iVar, MinLagr(iLine):MaxLagr(iLine))
         end do
         close(101)
 

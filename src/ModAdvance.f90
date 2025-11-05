@@ -62,7 +62,7 @@ contains
                 ! final time for this subinterval
                 NextTimeStep = PTTime + (iProgress*DtProgress)
                 ! inject particles 5 lagrangian coordinates upstream of shock
-                LagrInject = iShockNew + 5
+                LagrInject = iShockNew
                 ! advect shock
                 call advect_fieldline(Alpha, iShockNew, NextTimeStep)
 
