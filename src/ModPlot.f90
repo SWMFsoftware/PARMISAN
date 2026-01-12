@@ -3,7 +3,7 @@
   !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModPlot
   
-  use PT_ModConst, only: ckeV
+  use PT_ModConst, only: ckeV, cPi
   use PT_ModProc, ONLY : iProc, iComm, iError
   use PT_ModUnit, ONLY : kinetic_energy_to_momentum
   
@@ -16,6 +16,8 @@ module PT_ModPlot
   character(len=*), parameter :: EnergyBinFile = 'energy_bin.dat'
   character(len=*), parameter :: LagrBinFile = 'lagr_bin.dat'
   character(len=*), parameter :: RFile = 'R_bin.dat'
+  character(len=*), parameter :: ShockLocFile = 'shock_loc.dat'
+  character(len=*), parameter :: FinjFile = 'finj.dat'
   
 contains
   !============================================================================
@@ -35,10 +37,11 @@ contains
     end select
   end subroutine read_param
   !============================================================================
-  subroutine save_bin_arrays
+  subroutine init
     use ModUtilities, only: touch_file
     use PT_ModDistribution, only: EnergyBin_I, LagrBin_I
 
+    ! write energy bin file - stays constant throughout simulation
     open(801,file=OutputDir//EnergyBinFile,status='unknown')
     write(801,'(3000e15.6)')EnergyBin_I/ckeV
     close(801)
@@ -46,14 +49,40 @@ contains
     ! Create time file - will be appended with the output time each timestep
     call touch_file(OutputDir//TimeFile)
     
-    open(801,file=OutputDir//LagrBinFile,status='unknown')
-    write(801,'(3000e15.6)')LagrBin_I
-    close(801)
-
-    ! Create file that will hold radial distance - time dependent
+    ! Create file that will hold spatial bins - time dependent
+    call touch_file(OutputDir//LagrBinFile)
     call touch_file(OutputDir//RFile)
 
-  end subroutine save_bin_arrays
+    ! Create shock location file and record shock at surface at t = 0
+    call touch_file(OutputDir//ShockLocFile)
+    ! call touch_file(OutputDir//FinjFile)
+
+  end subroutine init
+  !============================================================================
+  subroutine save_finject(Time, LagrCoord, fInj)
+    real, intent(in) :: Time, LagrCoord, fInj
+   
+
+    open(104, file = OutputDir//FinjFile, position = 'append', action = 'write')
+    write(104, '(3e15.6)') Time, LagrCoord, fInj
+    close(104)
+
+  end subroutine save_finject
+  !============================================================================
+  subroutine save_shock_location
+
+    use PT_ModProc, only: iProc
+    use PT_ModTime, only: DataInputTime
+    use PT_ModGrid, only: State_VIB, R_, iShock_IB, Shock_
+
+    integer :: iLine = 1
+    ! Currently only designed for one fieldline!
+    if(iProc.ne.0) return
+    open(104, file = OutputDir//ShockLocFile, position = 'append', action = 'write')
+    write(104, '(2e15.6)') DataInputTime, State_VIB(R_, iShock_IB(Shock_, iLine), iLine)
+    close(104)
+
+  end subroutine save_shock_location
   !============================================================================
   subroutine save_position_bins(Time)
 
@@ -64,6 +93,10 @@ contains
     real :: RBins_I(nLagrBins+1)
   
     integer :: iBin
+
+    open(911, file=OutputDir//LagrBinFile, position="append", action="write")
+      write(911, '(4000e15.6)') LagrBin_I
+    close(911)
 
     do iBin = 1, nLagrBins+1
       call get_particle_location(Time, LagrBin_I(iBin), RBins_I(iBin))
@@ -84,15 +117,16 @@ contains
     integer :: iTime, iLagr
     character(len = 50) :: outputFile
 
+    real :: TotalWeightProc
+
     ! Save fluxes stored at different radial distances
     !--------------------------------------------------------------------------
-    call MPI_reduce_real_array(Counts_II, nEnergyBins*nLagrBins, MPI_SUM, 0,&
+    ! placeholder for original total weight - need to reset after summing over all processors
+    TotalWeightProc = TotalWeight
+    call MPI_reduce_real_array(Counts_II, nEnergyBins*nLagrBins, MPI_SUM, 0, &
          iComm, iError)
     call MPI_reduce_real_scalar(TotalWeight, MPI_SUM, 0, iComm, iError)
 
-    ! Save data
-    ! Calculate conversion from F = ds/B*f 
-    ! Divide counts by total weight
     if(iProc/=0) then
       ! Reset Counts for next timestep
       Counts_II = 0.0
@@ -107,18 +141,20 @@ contains
 
       call save_position_bins(Time)
       ! create output distribution function file name
-      write(outputFile, '(A15, I0)') 'distfunc_iter_', int(Time)
+      write(outputFile, '(A15, I0)') 'distfunc_time_', int(Time)
       outputFile = adjustl(outputFile)
 
       ! output distribution function (nEnergy x nLagrCoord)
       open(902, file=OutputDir//trim(outputFile), status='unknown', action="READWRITE")
       do iLagr = 1, nLagrBins
-        write(902,'(3000e15.6)') Counts_II(:, iLagr) 
+        write(902,'(4000e15.6)') Counts_II(:, iLagr) 
       end do
       close(902)
 
       ! Reset Counts for next timestep
       Counts_II = 0.0
+      ! Reset total weight of processor to original value
+      TotalWeight = TotalWeightProc
     end if
 
   end subroutine save_distribution_function
@@ -128,9 +164,8 @@ contains
     !     constant Dxx along entire fieldline
     use PT_ModGrid, only: State_VIB, U_, nVertex_B
     use PT_ModFieldline, only: DxxConst
-    use PT_ModDistribution, only: EnergyBin_I, nEnergyBins
+    use PT_ModDistribution, only: EnergyBin_I, nEnergyBins, InjEnergy
     use PT_ModUnit, only: kinetic_energy_to_momentum
-    use PT_ModParticle, only: E0
 
     real :: UpstreamU, DownstreamU, PowerLaw, P0, Pnorm
     real, allocatable :: fSteadyState(:), Tacc(:)
@@ -145,7 +180,7 @@ contains
     UpstreamU = State_VIB(U_, nVertex_B(1)-5, 1) - 1.0
     DownstreamU = State_VIB(U_, 5, 1) - 1.0
     PowerLaw = -3.0 * UpstreamU / (UpstreamU - DownstreamU)
-    P0 = kinetic_energy_to_momentum(E0)
+    P0 = kinetic_energy_to_momentum(InjEnergy)
 
     do i = 1, nEnergyBins+1
       Pnorm = kinetic_energy_to_momentum(EnergyBin_I(i)) / P0

@@ -19,17 +19,14 @@ module PT_ModParticle
    integer, parameter :: LagrCoord_    = 1,  &
                          Momentum_     = 2,  &                      
                          Time_         = 3,  &
-                         TimeStep_     = 4,  &
-                         R_            = 5,  &
-                         Energy_       = 6,  &
-                         Weight_       = 7,  &
-                         ParentIndex_  = 8,  &
-                         NumChildren_  = 9,  &
-                         SplitLevel_   = 10, &
-                         nSplitVar     = 10, & ! number of variables if splitting
-                         nVar          = 7     ! number of variables if not splitting
+                         R_            = 4,  &
+                         Weight_       = 5,  &
+                         ParentIndex_  = 6,  &
+                         NumChildren_  = 7,  &
+                         SplitLevel_   = 8,  &
+                         nSplitVar     = 8,  & ! number of variables if splitting
+                         nVar          = 5     ! number of variables if not splitting
 
-   real         :: E0             ! = 10.0*keV
    integer      :: nSplitLev, nSplitMax      ! defaults: 40, 80
    real         :: eSplitLevelMin ! = 1.d0*MeV      ! energy of first split level
    real         :: eSplitLevelMax ! = 20000.d0*MeV  ! energy of last split level
@@ -49,7 +46,6 @@ contains
       select case(NameCommand)
       case('#PARTICLE')
          call read_var('nInject', nInject)
-         call read_var('initialEnergy', E0)
          call read_var('UseSplit', UseSplit)
          call read_var('nSplitLev', nSplitLev)
          call read_var('nSplitMax', nSplitMax)
@@ -57,7 +53,6 @@ contains
          call read_var('eSplitLevelMax', eSplitLevelMax)
 
          ! Convert to joules
-         E0 = E0*ckeV
          eSplitLevelMax = eSplitLevelMax*cMeV
          eSplitLevelMin = eSplitLevelMin*cMeV
          
@@ -73,6 +68,7 @@ contains
       integer :: MaxTotalParticles
 
       MaxTotalParticles = nVertexMax*nInject
+      
       if(UseSplit) then
          MaxTotalParticles = MaxTotalParticles + MaxTotalParticles*nSplitMax
          allocate(Particle_IV(1:MaxTotalParticles, 1:nSplitVar))
@@ -120,8 +116,8 @@ contains
    end subroutine init_split_grid
    !============================================================================
    subroutine inject_particles(iLine, Time, LagrCoord)
-      use PT_ModFieldline, only: get_particle_location, compute_weight
-      use PT_ModDistribution, only: increase_total_weight
+      use PT_ModFieldline, only: get_particle_location, calc_weight
+      use PT_ModDistribution, only: increase_total_weight, InjEnergy
       use PT_ModUnit, only: kinetic_energy_to_momentum
       
       integer, intent(in) :: iLine
@@ -133,37 +129,45 @@ contains
       iEnd = nParticleOnLine(iLine) + nInject
 
       do i = iStart, iEnd
-         ! Set particle initial time, radial distance, and lagrangian coord on fieldline   
+         ! Set psuedo-particle initial time, radial distance, 
+         ! and lagrangian coord on fieldline   
          Particle_IV(i, Time_) = Time
          Particle_IV(i, LagrCoord_) = LagrCoord
          call get_particle_location(Time, Particle_IV(i, LagrCoord_), Particle_IV(i, R_))
-         ! Set particle energy/momentum
-         Particle_IV(i, Energy_) = E0
-         Particle_IV(i, Momentum_) = kinetic_energy_to_momentum(Particle_IV(i, Energy_))
+         
+         ! Set psuedo-particle energy/momentum
+         Particle_IV(i, Momentum_) = kinetic_energy_to_momentum(InjEnergy)
 
-         ! RIGHT NOW WEIGHT IS SET TO 1
-         call compute_weight(Particle_IV(i, Time_), Particle_IV(i, LagrCoord_), Particle_IV(i, Weight_))
+         ! statistical weight of psuedo-particle is:
+         ! thermal energy density at the shock * dSoverB
+         call calc_weight(Particle_IV(i, Time_), &
+                             Particle_IV(i, LagrCoord_), &
+                             Particle_IV(i, Weight_))
+
          call increase_total_weight(Particle_IV(i, Weight_))
 
          ! particle splitting variables
          ! parent index = index of first parent (to track and limit maximum number of splits)
-         ! numchildren = number of child  particles (to track and limit maximum number of splits)
+         ! numchildren = number of child particles (to track and limit maximum number of splits)
          ! splitlevel = number of splits removed from first parent (to track next split)
-         ! if(UseSplit) then
-         !    Particle_IV(i, ParentIndex_) = i
-         !    Particle_IV(i, NumChildren_) = 0
-         !    Particle_IV(i, SplitLevel_) = 1
-         ! end if
+         if(UseSplit) then
+            Particle_IV(i, ParentIndex_) = i
+            Particle_IV(i, NumChildren_) = 0
+            Particle_IV(i, SplitLevel_) = 1
+         end if
          nParticleOnLine(iLine) = nParticleOnLine(iLine) + 1
       end do
       
    end subroutine inject_particles
    !============================================================================
    subroutine check_split(iParticle, DoSplit)
+
+      use PT_ModUnit, only: momentum_to_kinetic_energy
       integer, intent(in) :: iParticle
       logical, intent(out) :: DoSplit
 
       integer :: SplitLevel, ParentNumChildren
+      real    :: Energy
 
       DoSplit = .false.
       ! current energy threshold index of splitting
@@ -175,8 +179,9 @@ contains
       ! if max split energy threshold has not yet been reached
       ! if particle crosses next energy threshold
       ! if max child particles per first parent has not yet been reached
-      if(SplitLevel.lt.nSplitLev.and. &
-         Particle_IV(iParticle, Energy_).gt.eSplitLev_I(SplitLevel) &
+      Energy = momentum_to_kinetic_energy(Particle_IV(iParticle, Momentum_))
+      if(SplitLevel.lt.nSplitLev & 
+         .and.Energy.gt.eSplitLev_I(SplitLevel) &
          .and.ParentNumChildren.le.nSplitMax) DoSplit = .true.
 
    end subroutine check_split
@@ -213,21 +218,28 @@ contains
    !============================================================================
    subroutine advance_particles(iLine, TimeLimit, BinTime)
 
-      use PT_ModDistribution, ONLY: bin_particle, TimeWindow
-      use PT_ModFieldline, ONLY: check_boundary_conditions
+      use PT_ModDistribution, only: bin_particle, TimeWindow
+      use PT_ModFieldline,    only: check_boundary_conditions
+      use PT_ModUnit,         only: momentum_to_kinetic_energy
 
       integer, intent(in) :: iLine
       real, intent(in) :: TimeLimit, BinTime
       integer :: iParticle, nLagr, iShock, iShockOld, nProgress, iProgress
       logical :: DoSplit, IsOutside
+      real    :: Energy, Timestep
 
       ! Loop over particles on this line
-      PARTICLE: do iParticle = 1, nParticleOnLine(iLine)
+      ! with particle splitting nParticleOnLine needs to change
+      ! TODO: change to do while loop?
+      iParticle = 1
+      ! PARTICLE: do iParticle = 1, nParticleOnLine(iLine)
+      PARTICLE: do while(iParticle.le.nParticleOnLine(iLine))
          ! particle time loop    
-         do while(Particle_IV(iParticle, Time_).lt.TimeLimit) 
-            ! move particle one timestep
-            call advance_particle(iParticle, TimeLimit)
 
+         do while(Particle_IV(iParticle, Time_).lt.TimeLimit) 
+            
+            ! move particle one timestep
+            call advance_particle(iParticle, TimeLimit, Timestep)
             ! check if particle left spatial boundaries
             call check_boundary_conditions(Particle_IV(iParticle, Time_),      &
                                            Particle_IV(iParticle, LagrCoord_), &
@@ -235,10 +247,12 @@ contains
                                            IsOutside)
             
             ! bin particle in space/time/momentum at end of time step
+            ! Particle weight is its initial weight multipled by the timestep
             if(Particle_IV(iParticle, Time_).ge.(BinTime-TimeWindow)) then
+               Energy = momentum_to_kinetic_energy(Particle_IV(iParticle, Momentum_))
                call bin_particle(Particle_IV(iParticle, LagrCoord_), &
-                                 Particle_IV(iParticle, Energy_),    &
-                                 Particle_IV(iParticle, Weight_))
+                                 Energy,    &
+                                 Particle_IV(iParticle, Weight_) * Timestep / TimeWindow)
             end if
 
             ! if particle leaves spatial boundary set time to large number
@@ -248,24 +262,25 @@ contains
 
             ! particle splitting:
             ! total weight is conserved
-            ! if(UseSplit) then
-            !    call check_split(iParticle, DoSplit)
-            !    if(DoSplit) then          
-            !       call split_particle(iParticle, iLine)
-            !    end if
-            ! end if
+            if(UseSplit) then
+               call check_split(iParticle, DoSplit)
+               if(DoSplit) then          
+                  call split_particle(iParticle, iLine)
+               end if
+            end if
 
          end do ! particle time loop
-         
+         iParticle = iParticle + 1
       end do PARTICLE 
 
    end subroutine advance_particles
    !============================================================================
-   subroutine advance_particle(iParticle, tStepMax)
+   subroutine advance_particle(iParticle, tStepMax, Timestep)
       use PT_ModFieldline, only : get_particle_location
       use PT_ModUnit, only: momentum_to_kinetic_energy
       integer, intent(in) :: iParticle
       real, intent(in) :: tStepMax
+      real, intent(out) :: Timestep
 
       ! Vectors solved by SDE
       real :: XOld(nDim), XNew(nDim)
@@ -276,20 +291,19 @@ contains
 
       ! Advance psuedo-particle one time step
       call euler_sde(XOld, tStepMax, Particle_IV(iParticle, Time_), &
-                     Particle_IV(iParticle, TimeStep_), XNew)
-                     
+                     Timestep, XNew)
+
       ! Update Lagrangian coordinate and momentum
       Particle_IV(iParticle, LagrCoord_) = XNew(LagrCoord_)
       Particle_IV(iParticle, Momentum_) = (3.0*XNew(Momentum_))**(1.0/3.0)
-      Particle_IV(iParticle, Energy_) = momentum_to_kinetic_energy(Particle_IV(iParticle, Momentum_))
 
       ! Update particle time
-      Particle_IV(iParticle, Time_) = Particle_IV(iParticle, Time_) + Particle_IV(iParticle, TimeStep_)
+      Particle_IV(iParticle, Time_) = Particle_IV(iParticle, Time_) + Timestep
+      
       ! Update radial distance (R)
       call get_particle_location(Particle_IV(iParticle, Time_), &
                                  Particle_IV(iParticle, LagrCoord_), &
                                  Particle_IV(iParticle, R_))
-
 
    end subroutine advance_particle
    !============================================================================
@@ -305,7 +319,7 @@ contains
 
       ! energy limits [keV]
       Emin = 10.0
-      Emax = 100.0
+      Emax = 300.0
 
       call random_number(RandUniform)
 

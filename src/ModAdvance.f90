@@ -11,16 +11,16 @@ contains
     !--------------------------------------------------------------------------
     subroutine advance(TimeLimit)  
         
-        use PT_ModGrid,      only: nLine, Used_B, iShock_IB, Shock_, &
-                                   ShockOld_
-        use PT_ModShock,     only: DoOutputShock
-        use PT_ModParticle,  only: advance_particles, &
-                                   inject_particles
-        use PT_ModFieldline, only: set_fieldline, advect_fieldline, save_fieldline_data
-        use PT_ModPlot,      only: save_distribution_function
-        use PT_ModTime,      only: iIter, PTTime, DataInputTime
-        use ModMpi
-        use PT_ModProc,      only: iComm, iError, iProc
+        use PT_ModGrid,         only: nLine, Used_B, iShock_IB, Shock_, &
+                                      ShockOld_
+        use PT_ModShock,        only: DoOutputShock
+        use PT_ModParticle,     only: advance_particles, inject_particles
+        use PT_ModFieldline,    only: set_fieldline, advect_fieldline, &
+                                      save_fieldline_data
+        use PT_ModDistribution, only: set_lagr_bins, update_integral_over_finj
+        use PT_ModPlot,         only: save_distribution_function
+        use PT_ModTime,         only: iIter, PTTime, DataInputTime
+        use PT_ModProc,         only: iComm, iError, iProc
 
         real, intent(in) :: TimeLimit
         integer :: iLine, iProgress, iShock, iShockOld, nProgress, iShockNew
@@ -36,6 +36,8 @@ contains
 
             ! set fieldline number in ModFieldline
             call set_fieldline(iLine)
+            ! set lagr phase space bins for this time step
+            call set_lagr_bins(iLine)
 
             ! indices of shock during previous and current MHD state
             iShock = iShock_IB(Shock_, iLine)
@@ -61,12 +63,20 @@ contains
                 Alpha = iProgress / real(nProgress)
                 ! final time for this subinterval
                 NextTimeStep = PTTime + (iProgress*DtProgress)
-                ! inject particles 5 lagrangian coordinates upstream of shock
+                ! inject particles at shock location
                 LagrInject = iShockNew
+                
                 ! advect shock
                 call advect_fieldline(Alpha, iShockNew, NextTimeStep)
 
-                if(DoOutputShock) call save_fieldline_data(iProgress, NextTimeStep)
+                ! integrate injected distribution for later normalization
+                if(iProc.eq.0) then
+                    call update_integral_over_finj(NextTimeStep - DtProgress, &
+                                                   LagrInject)
+                end if
+
+                if(DoOutputShock) &
+                    call save_fieldline_data(iProgress, NextTimeStep)
 
                 ! inject particles at shock location at start of subinterval
                 call inject_particles(iLine, NextTimeStep - DtProgress, LagrInject)
@@ -78,6 +88,7 @@ contains
 
             end do PROGRESS
             
+            ! All processors must finish current timestep before saving solution
             call MPI_BARRIER(iComm, iError)
             call save_distribution_function(iIter + 1, TimeLimit)
 

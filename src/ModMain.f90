@@ -157,8 +157,8 @@ contains
       use PT_ModDistribution, ONLY: init_distribution => init
       use PT_ModParticle,     ONLY: init_particle     => init
       use PT_ModShock,        ONLY: init_shock        => init
-      use PT_ModPlot,         ONLY: save_bin_arrays
-      
+      use PT_ModPlot,         ONLY: init_plot         => init
+
       ! initialize the model
       character(len=*), parameter:: NameSub = 'initialize'
       !--------------------------------------------------------------------------
@@ -174,11 +174,11 @@ contains
       call init_seed
       ! Initializes phase space bins and counts array
       call init_distribution
-      call save_bin_arrays
+      call init_plot
       ! Init particle array and split grid
       call init_particle
       
-      if(iProc.eq.0)then
+      if(iProc.eq.0) then
          write(*,'(a)')'PT: initialized'
       end if
 
@@ -202,7 +202,7 @@ contains
       use PT_ModReadMhData,    ONLY: read_mh_data
       use PT_ModTime,          ONLY: PTTime, DataInputTime, iIter
       use PT_ModAdvance,       ONLY: advance
-      use PT_ModPlot,          only: save_analytic_solution
+      use PT_ModPlot,          only: save_analytic_solution, save_shock_location
       
       ! advance the solution in time
       logical, save :: IsFirstCall = .true.
@@ -242,6 +242,7 @@ contains
       if(DoTraceShock) then
          call get_dLogRho
          call get_shock_location
+         call save_shock_location
       end if
 
       ! run the model from PTTime to min(DataInputTime, TimeMax)

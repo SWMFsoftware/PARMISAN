@@ -5,7 +5,8 @@ module PT_ModConst
   use ModNumConst, only: cPi, cTwoPi, cRadToDeg, cDegToRad   
   use ModConst,    only: cAU, ceV, ckeV, cMeV, cMu, &
                          cLightSpeed, cProtonMass, &
-                         cElectronCharge, cRsun => rSun, cTiny
+                         cElectronCharge, cRsun => rSun, cTiny, &
+                         cBoltzmann, cKEVToK
 
   implicit none
   SAVE

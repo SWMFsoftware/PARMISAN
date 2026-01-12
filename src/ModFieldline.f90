@@ -7,6 +7,7 @@ module PT_ModFieldline
     use PT_ModTime, ONLY: PTTime, DataInputTime
     use PT_ModConst, ONLY: cPi, ckeV, cAU, cRsun, cProtonMass, &
                            cElectronCharge, cLightSpeed, cProtonRestEnergy
+
     use PT_ModSize,  ONLY: nVertexMax
     use PT_ModShock, ONLY: dLogRho_II, dLogRhoOld_II, dLogRhoThreshold
     
@@ -17,6 +18,7 @@ module PT_ModFieldline
 
     logical :: UseConstantDiffusion = .false.
     real    :: DxxConst = 10.0
+    real    :: DxxFactor = 1.0
 
     real, allocatable :: PreviousState(:, :), CurrentState(:,:), &
                          MhdState1(:, :), MhdState2(:,:)
@@ -35,7 +37,7 @@ module PT_ModFieldline
     integer :: iShockNew, iShock1, iShock2
     integer :: iShock1Up, iShock2Up, iShock1Down, iShock2Down
     integer :: WidthUp, WidthDown
-
+    real    :: dLogRhoLimit
 contains
 !============================================================================
     subroutine read_param_fieldline(NameCommand)
@@ -48,8 +50,11 @@ contains
         !--------------------------------------------------------------------------
         select case(NameCommand)
         case('#DIFFUSION')
+            call read_var('DxxFactor', DxxFactor)
             call read_var('UseConstantDiffusion', UseConstantDiffusion)
-            call read_var('DxxConst', DxxConst)
+            if(UseConstantDiffusion) &
+                call read_var('DxxConst', DxxConst)
+
         case default
             call CON_stop(NameSub//' Unknown command '//NameCommand)
         end select
@@ -104,6 +109,8 @@ contains
         iShock2Up = iShock_IB(ShockUp_, iLine)
         iShock2Down = iShock_IB(ShockDown_, iLine)
 
+        dLogRhoLimit = min(minval(MhdState2(dLogRho_, :)), &
+                           minval(MhdState1(dLogRho_, :)))
     end subroutine
     !============================================================================
     subroutine advect_fieldline(Alpha, iShockNewIn, NewTime)
@@ -142,10 +149,10 @@ contains
         iShockNewDown = iShockNew - WidthDown
 
         ! Take log of B, dB, and rho before interpolation - helps at inner boundary
-        where(MhdState1(BState_:RhoState_, :).ne.0) &
-            MhdState1(BState_:RhoState_, :) = log10(MhdState1(BState_:RhoState_, :))
-        where(MhdState2(BState_:RhoState_, :).ne.0) &
-            MhdState2(BState_:RhoState_, :) = log10(MhdState2(BState_:RhoState_, :))
+        ! where(MhdState1(BState_:RhoState_, :).ne.0) &
+        !     MhdState1(BState_:RhoState_, :) = log10(MhdState1(BState_:RhoState_, :))
+        ! where(MhdState2(BState_:RhoState_, :).ne.0) &
+        !     MhdState2(BState_:RhoState_, :) = log10(MhdState2(BState_:RhoState_, :))
     
         ! interpolate fieldline in time
         CurrentState = (1 - Alpha) * MhdState1 + Alpha * MhdState2
@@ -178,43 +185,47 @@ contains
 
         ! interpolate over old mhd shock regions
         do iVar = 1, nStateAdvect
-            Slope = (CurrentState(iVar, iShockNewDown)-CurrentState(iVar, iShock1Down)) / &
-                (iShockNewDown - iShock1Down)
-            do iLagr = iShock1Down,  iShockNewDown
-                CurrentState(iVar, iLagr) = CurrentState(iVar, iShock1Down) + &
-                    Slope * (iLagr - iShock1Down)
-            end do
-
-            Slope = (CurrentState(iVar, iShock2Up)-CurrentState(iVar, iShockNewUp-1)) / &
-                (iShock2Up - iShockNew-WidthUp+1)
-            do iLagr = iShockNewUp-1, iShock2Up
-                CurrentState(iVar, iLagr) = CurrentState(iVar, iShockNewUp-1) + &
-                    Slope * (iLagr - iShockNew-WidthUp+1)
-            end do
-
+            if(iShockNewDown.gt.iShock1Down) then
+                Slope = (CurrentState(iVar, iShockNewDown)-CurrentState(iVar, iShock1Down)) / &
+                    (iShockNewDown - iShock1Down)
+                do iLagr = iShock1Down,  iShockNewDown
+                    CurrentState(iVar, iLagr) = CurrentState(iVar, iShock1Down) + &
+                        Slope * (iLagr - iShock1Down)
+                end do
+            end if
+            if(iShock2Up.gt.(iShockNew+WidthUp+1)) then
+                Slope = (CurrentState(iVar, iShock2Up)-CurrentState(iVar, iShockNewUp-1)) / &
+                    (iShock2Up - iShockNew-WidthUp+1)
+                do iLagr = iShockNewUp-1, iShock2Up
+                    CurrentState(iVar, iLagr) = CurrentState(iVar, iShockNewUp-1) + &
+                        Slope * (iLagr - iShockNew-WidthUp+1)
+                end do
+            end if
         end do
 
         ! Undo log
-        where(MhdState1(BState_:RhoState_, :).ne.0) &
-            MhdState1(BState_:RhoState_, :) = 10.0**MhdState1(BState_:RhoState_, :)
-        where(MhdState2(BState_:RhoState_, :).ne.0) &
-            MhdState2(BState_:RhoState_, :) = 10.0**MhdState2(BState_:RhoState_, :)
-        where(CurrentState(BState_:RhoState_, :).ne.0) &
-            CurrentState(BState_:RhoState_, :) = 10.0**CurrentState(BState_:RhoState_, :)
-
+        ! where(MhdState1(BState_:RhoState_, :).ne.0) &
+        !     MhdState1(BState_:RhoState_, :) = 10.0**MhdState1(BState_:RhoState_, :)
+        ! where(MhdState2(BState_:RhoState_, :).ne.0) &
+        !     MhdState2(BState_:RhoState_, :) = 10.0**MhdState2(BState_:RhoState_, :)
+        ! where(CurrentState(BState_:RhoState_, :).ne.0) &
+        !     CurrentState(BState_:RhoState_, :) = 10.0**CurrentState(BState_:RhoState_, :)
 
         ! SHOCK SHARPENING ALGORITHM GOES HERE
         ! Currently increase dLogRho by the maximum dLogRho calculated from the advected rho
         ! ------------------------------------------------------------------- !
         dLogRhoMax = maxval(log(CurrentState(RhoState_, :)/PreviousState(RhoState_, :))/ (CurrentTime-PreviousTime))
-
         where(CurrentState(dLogRho_, iShockNewDown:iShockNewUp).gt.0) &
             CurrentState(dLogRho_, iShockNewDown:iShockNewUp) = &
                 CurrentState(dLogRho_, iShockNewDown:iShockNewUp) * &
                 dLogRhoMax / maxval(CurrentState(dLogRho_, iShockNewDown:iShockNewUp))
+        ! ! ------------------------------------------------------------------- !
 
-        where(PreviousState(dLogRho_, :).lt.-0.0001) PreviousState(dLogRho_, :) = -0.0001
-        where(CurrentState(dLogRho_, :).lt.-0.0001) CurrentState(dLogRho_, :) = -0.0001
+        ! energy loss restriction - arbitrary
+        ! dLogRhoLimit = -0.0001
+        ! dLogRhoLimit = 0.0
+        where(PreviousState(dLogRho_, :).lt.dLogRhoLimit) PreviousState(dLogRho_, :) = dLogRhoLimit
+        where(CurrentState(dLogRho_, :).lt.dLogRhoLimit)  CurrentState(dLogRho_, :)  = dLogRhoLimit
         ! ------------------------------------------------------------------- !
     end subroutine advect_fieldline
     !============================================================================
@@ -250,7 +261,6 @@ contains
             ! interpolation in time
             InterpValue = (1 - TimeFrac) * f1 + TimeFrac * f2
         end if
-
     end subroutine interpolate_statevar
     !============================================================================
     subroutine calculate_dLogRho(LagrCoord, dLogRhodTau)
@@ -261,7 +271,6 @@ contains
         real :: iLagrFrac, TimeFrac, f1, f2
         real :: RhoCurrent, RhoPrevious
 
-        ! currently not used
         iLagr = floor(LagrCoord)
         iLagrFrac = LagrCoord - iLagr
 
@@ -271,6 +280,7 @@ contains
                      PreviousState(RhoState_, iLagr+1) * iLagrFrac                    
         
         dLogRhodTau = log(RhoCurrent/RhoPrevious) / (CurrentTime - PreviousTime)
+        ! dLogRhodTau = max(dLogRhodTau, dLogRhoLimit)
    
     end subroutine calculate_dLogRho
     !============================================================================
@@ -279,7 +289,7 @@ contains
         real, intent(out) :: Dxx
 
         real :: R, B, dB
-
+        real :: R0 = 20.0
 
         if(UseConstantDiffusion) then
             ! constant Rs**2 is to offset the unit conversion
@@ -293,13 +303,21 @@ contains
 
         ! upstream of shock - use empirical PSP values from Chen et al 2024
         if(R.gt.CurrentState(RState_, iShockNew+WidthUp)) then
-            call get_psp_dxx(R, Momentum, Dxx)
+            ! call get_psp_dxx(R, Momentum, Dxx)
+
+            call get_upstream_dxx(R, Momentum, Dxx)
+
         ! downstream of shock - use MHD turbulence
         else
             call interpolate_statevar(Time, LagrCoord, BState_, B)
             call interpolate_statevar(Time, LagrCoord, dBState_, dB)
             call get_mhd_dxx(R, B, dB, Momentum, Dxx)
-            if(R.gt.CurrentState(RState_, iShockNew-WidthDown)) Dxx = Dxx / 3.0
+            
+            ! Within shock region, reduce Dxx by factor set in PARAM
+            ! Do not let Dxx increase. 
+            ! R0 = R value where DxxFactor = 1
+            if(R.gt.CurrentState(RState_, iShockNew-WidthDown)) &
+                Dxx = Dxx / max(1.0, (DxxFactor / R**(log(DxxFactor)/log(R0))))
         end if
 
     end subroutine get_dxx
@@ -316,14 +334,14 @@ contains
 
         ! Calculate mean free path
         Lmax = 0.4*R*cRsun
-        Btotal = sqrt(B**2 + dB)
 
         ! dB limiter
-        ! if((Btotal/sqrt(dB)).lt.1.0) Btotal = sqrt(dB)
-        ! if((Btotal**2/dB).gt.1) write(*,*) 'B/dB > 1'
+        ! if(sqrt(dB)/B.gt.1) B = sqrt(dB)
+
+        Btotal = sqrt(B**2 + dB)
 
         MeanFreePath = ConstantFactor * Btotal**2 * &
-                        (Momentum*Lmax**2/(B * cElectronCharge))**(1.0/3.0) / dB
+                        (Momentum*Lmax**2/(Btotal * cElectronCharge))**(1.0/3.0) / dB
         ! Calculate Dxx 
         Dxx = MeanFreePath * Velocity / 3.0
         Dxx = max(Dxx, 1.0d4 * cRsun)
@@ -343,6 +361,23 @@ contains
 
     end subroutine get_psp_dxx
     !============================================================================   
+    subroutine get_upstream_dxx(R, Momentum, Dxx)
+        real, intent(in) :: R, Momentum
+        real, intent(out) :: Dxx
+
+        real :: Lambda0 = 0.3
+        real :: Energy, fac1, fac2, GeV
+
+        Energy = sqrt((Momentum*cLightSpeed)**2 + cProtonRestEnergy**2) - cProtonRestEnergy
+        GeV = 1e6 * ckeV
+
+        fac1 = Energy * (Energy + 2.0 * cProtonRestEnergy) / GeV**2.0
+        fac2 = Energy * (Energy + 2.0 * cProtonRestEnergy) / (Energy + cProtonRestEnergy)**2.0
+
+        Dxx = Lambda0 * cLightSpeed * R * cRsun * fac1 ** (1.0/6.0) * sqrt(fac2) / (3.0)
+    
+    end subroutine get_upstream_dxx
+    !============================================================================   
     subroutine get_sde_coeffs_euler(X_I, Time, TimeStep, DriftCoeff, DiffCoeff)
         use PT_ModSize, only: nDim
         use PT_ModProc, only: iProc
@@ -350,7 +385,7 @@ contains
         real, intent(in) :: X_I(nDim), Time
         real, intent(out) :: Timestep, DriftCoeff(nDim), DiffCoeff(nDim)
 
-        real :: Momentum, B, Dxx, dS
+        real :: Momentum, B, Dxx, dS, ShockWidth
         real :: Bup, DxxUp, dSup
         real :: Bdown, DxxDown, dSdown
         real :: Rho1, RhoOld1, dLogRhodTau
@@ -360,8 +395,8 @@ contains
         Momentum = (3.0*X_I(2))**(1.0/3.0)
 
         ! Need to figure out where to put X_I index variables - hardcoded 1 = LagrCoord_
-        ! call calculate_dLogRho(X_I(1), dLogRhodTau)
-        call interpolate_statevar(Time, X_I(1), dLogRho_, dLogRhodTau)
+        call calculate_dLogRho(X_I(1), dLogRhodTau)
+        ! call interpolate_statevar(Time, X_I(1), dLogRho_, dLogRhodTau)
 
         ! get values at particle current location
         call interpolate_statevar(Time, X_I(1), BState_, B)
@@ -380,26 +415,56 @@ contains
         ! lagr coord sde coefficients
         DriftCoeff(1) = B * ((DxxUp / (Bup * dSup)) - (Dxx / (B * dS))) / dS
         DiffCoeff(1) = sqrt(2.0 * Dxx) / dS
+
         ! momentum sde coefficients
         DriftCoeff(2) = X_I(2) * dLogRhodTau
         DiffCoeff(2) = 0.0
-
+                
+        ! pri
         ! calculate timestep based on coefficients
         ! diffusion >> drift
-        Timestep = DiffCoeff(1)**2.0 / DriftCoeff(1)**2.0
-      
+        ! Maximum spatial step size is less than shockwidth
+        ShockWidth = real(WidthUp + WidthDown)
+        if(ShockWidth.eq.0) ShockWidth = 1e9
+        if(abs(X_I(1) - real(iShockNew)).gt.ShockWidth) then
+            Timestep = DiffCoeff(1)**2.0 / DriftCoeff(1)**2.0
+        else
+            Timestep = min(DiffCoeff(1)**2.0 / DriftCoeff(1)**2.0, &
+                           ShockWidth / abs(DriftCoeff(1)),        &
+                           ShockWidth**2.0 / DiffCoeff(1)**2.0)
+        end if
+
     end subroutine get_sde_coeffs_euler
     !============================================================================
-    subroutine compute_weight(Time, LagrCoord, Weight)
+    subroutine calc_thermal_energy(Time, LagrCoord, ThermalEnergy)
+        ! Calculate thermal energy density: kb*mp*np*Tp
+        ! Temp [keV] Rho [amu/m^3]
+        ! Output: ThermalEnergy [J kg / m^3]
         real, intent(in) :: Time, LagrCoord
-        real, intent(out) :: Weight
+        real, intent(out) :: ThermalEnergy
 
         real :: Temp, Rho
+
         call interpolate_statevar(Time, LagrCoord, TState_, Temp)
         call interpolate_statevar(Time, LagrCoord, RhoState_, Rho)
 
-        Weight = Temp*Rho
-    end subroutine compute_weight
+        Temp = Temp * ckeV
+        ThermalEnergy = Temp * Rho * cProtonMass
+
+    end subroutine calc_thermal_energy
+    !============================================================================
+    subroutine calc_weight(Time, LagrCoord, Weight)
+        ! Statistical weight of each particle: rho*T*dS/B
+        real, intent(in)  :: Time, LagrCoord
+        real, intent(out) :: Weight
+
+        real :: ThermalEnergy, dSOverB
+
+        call calc_thermal_energy(Time, LagrCoord, ThermalEnergy)
+        call calc_dSOverB(Time, LagrCoord, dSOverB)
+
+        Weight = ThermalEnergy * dSOverB
+    end subroutine calc_weight
     !============================================================================
     subroutine get_particle_location(Time, LagrCoord, R)
         real, intent(in) :: Time, LagrCoord
@@ -411,35 +476,36 @@ contains
 
     end subroutine get_particle_location
     !============================================================================
-    subroutine compute_conversion_factor(Time, LagrCoord, ConversionFactor)
+    subroutine calc_dSOverB(Time, LagrCoord, dSOverB)
         real, intent(in) :: Time, LagrCoord
-        real, intent(out) :: ConversionFactor
+        real, intent(out) :: dSOverB
         
-        real :: B, dS
+        real :: dS, B
 
         call interpolate_statevar(Time, LagrCoord, dSState_, dS)
         call interpolate_statevar(Time, LagrCoord, BState_, B)
-        ConversionFactor = B / dS
-    end subroutine compute_conversion_factor
+        dSOverB = dS * cRsun / B
+
+    end subroutine calc_dSOverB
     !============================================================================
     subroutine check_boundary_conditions(Time, LagrCoord, R, IsOutside)
         real, intent(in) :: Time
         real, intent(inout) :: LagrCoord, R
         logical, intent(out) :: IsOutside 
-
+        real :: Rtemp
         IsOutside = .false.
-
+        
         ! reflecting boundary condition - inner spatial boundary
         if(LagrCoord.lt.MinLagr(iLine)) then
-            LagrCoord = MinLagr(iLine) + 1.0
-            call interpolate_statevar(Time, LagrCoord, RState_, R)
+             LagrCoord = MinLagr(iLine) + 1.0
+             call interpolate_statevar(Time, LagrCoord, RState_, R)
         end if
 
         ! absorbing boundary conditions - outer spatial boundary
         if(LagrCoord.lt.MinLagr(iLine)) IsOutside = .true.
         ! absorbing boundary conditions - outer spatial boundary
         if(LagrCoord.gt.MaxLagr(iLine)) IsOutside = .true.
-      
+        
     end subroutine check_boundary_conditions
     !============================================================================
     subroutine save_fieldline_data(iProgress, NextTimeStep)

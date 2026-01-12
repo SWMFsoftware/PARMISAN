@@ -31,10 +31,10 @@ contains
 
    end subroutine read_param
    !============================================================================
-    subroutine euler_sde(X_I, tStepMax, Time, Timestep, Xnew_I)
+    subroutine euler_sde(X_I, TimeMax, Time, Timestep, Xnew_I)
         ! Solve SDE using Euler-Maruyama method
         ! Timestep is calculated inside get_sde_coeffs
-        real, intent(in)    :: X_I(nDim), tStepMax, Time
+        real, intent(in)    :: X_I(nDim), TimeMax, Time
         real, intent(out)   :: Timestep, Xnew_I(nDim)
 
         real :: Wk(nDim)
@@ -42,12 +42,11 @@ contains
         real :: RandomNormal
 
         call get_sde_coeffs_euler(X_I, Time, Timestep, DriftCoeff, DiffCoeff)
-
         ! Multiply by time step factor and limit maximum time step
         Timestep = min(Timestep*TimeStepFactor, MaxTimeStep)
 
         ! if timestep takes the particle past the maximum time - limit timestep
-        if(Time+Timestep.gt.tStepMax) Timestep = tStepMax - time
+        if(Time+Timestep.gt.TimeMax) Timestep = TimeMax - Time
 
         ! get random normal variables 
         call get_random_normal(RandomNormal)

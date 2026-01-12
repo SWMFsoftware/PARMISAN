@@ -133,7 +133,6 @@ contains
      subroutine init
 
           ! initialize arrays related to the shock
-
           use ModUtilities, ONLY: check_allocate
           use PT_ModProc,   ONLY: iError
           character(len=*), parameter:: NameSub = 'init'
@@ -150,7 +149,7 @@ contains
 
           if(allocated(dLogRhoOld_II)) deallocate(dLogRhoOld_II)
           allocate(dLogRhoOld_II(1:nVertexMax, 1:nLine)) ! divU
-          call check_allocate(iError, 'dLogRhdLogRhoOld_IIo_II')
+          call check_allocate(iError, 'dLogRhoOld_II')
           dLogRhoOld_II = 0.0
 
           ! allocate and assign values only when we save states for the shock
@@ -241,15 +240,16 @@ contains
                          dLogRho_II(iShockMin:iShockMax, iLine), DIM=1, MASK= &
                          State_VIB(R_,iShockMin:iShockMax,iLine) > RShockMin .and. &
                          dLogRho_II(iShockMin:iShockMax, iLine) > dLogRhoThreshold, BACK = .true.)
-                    ! A Shane - added BACK=.TRUE.
                else
                     iShockForward = 0
                end if
                iShockCandidate = iShockMin - 1 + iShockForward
 
+               ! if shock has moved forward
                if(iShockCandidate >= iShockMin) then
                     iShock_IB(Shock_, iLine) = iShockCandidate
                     
+                    ! Determine upstream extent of shock
                     i = 0
                     do while(dLogRho_II(iShockCandidate + i, iLine).gt.dLogRhoThreshold.and. &
                              (iShockCandidate+i).lt.iEnd.and.i.le.nSearchMax)
@@ -257,13 +257,13 @@ contains
                     end do
                     iShock_IB(ShockUp_, iLine) = iShockCandidate + i
                     
+                    ! Determine downstream extent of shock
                     i = 0
                     do while(dLogRho_II(iShockCandidate - i, iLine).gt.dLogRhoThreshold.and. &
                             (iShockCandidate-i).gt.1.and.i.le.nSearchMax) 
                          i = i + 1
                     end do
                     iShock_IB(ShockDown_, iLine) = iShockCandidate - i   
-                    ! write(*,*) iShockCandidate, iShock_IB(ShockUp_, iLine), iShock_IB(ShockDown_, iLine)
                else
                     ! no change to shock location or width
                     iShock_IB(Shock_, iLine) = iShockMin

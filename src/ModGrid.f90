@@ -12,11 +12,11 @@ module PT_ModGrid
    use ModUtilities, ONLY: norm2
 #endif
    use ModUtilities, ONLY: CON_stop
-   use PT_ModSize,  ONLY: nVertexMax, nDim
-   use PT_ModProc,  ONLY: iProc
-   use PT_ModConst, ONLY: cTwoPi, cPi
-   use PT_ModConst, ONLY: cMu, cRsun, cProtonMass
-   use PT_ModTime, ONLY: PTTime, DataInputTime
+   use PT_ModSize,   ONLY: nVertexMax, nDim
+   use PT_ModProc,   ONLY: iProc
+   use PT_ModConst,  ONLY: cTwoPi, cPi
+   use PT_ModConst,  ONLY: cMu, cRsun, cProtonMass
+   use PT_ModTime,   ONLY: PTTime, DataInputTime
 
    implicit none
    SAVE
