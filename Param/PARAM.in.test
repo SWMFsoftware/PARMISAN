@@ -21,51 +21,50 @@ GSM      TypeCoordSystem
 1    nLat
 
 #GRIDNODE
-1 nLon
-1 nLat
+1    nLon
+1    nLat
 
 #STOP
 5000       nIterMax
-300        TimeMax # [s] max = 153720
+2000       TimeMax # [s] max = 153720
 
 #BOUNDARY
 -100.0      Rmin
 5000.0      Rmax
 
 #IDENTIFYSHOCK
-1         nShockWidth
-50        nSearchMax
+5         nShockWidth
+1         nSearchMax
 0.0       dLogRhoThreshold
 F         DoOutputShock
 
-#DIFFUSION
-T           UseConstantDiffusion
-10.0        DxxConst
-
 #DISTRIBUTION
 400         nLagrBins    # number of output files: each an array of (nt x nE)
-1.0         lagrBinMin   # [Rs]
-400.0       lagrBinMax   # [Rs]
 200         nEnergyBin
 10.0        eBinMin      # [keV]
 1e7         eBinMax      # [keV]
+10.0        InjEnergy    # [keV]
+1.0         InjCoeff
 1           TimeWindow   # [s]
 
 #SDE
 1.0         TimeStepFactor   # 0.01
 0.01        MaxTimeStep # [s]
 
+#DIFFUSION
+1.0         DxxFactor
+T           UseConstantDiffusion
+10.0        DxxConst
+
 #PARTICLE
-200             nInject        # how many particles injected per lagrangian coordinate
-10.0            initialEnergy  # [keV]
+100             nInject        # how many particles injected per lagrangian coordinate
 F               UseSplit
-40              nSplitLev      # number of energy thresholds where splitting occurs
-80              nSplitMax      # maximum number of split particles per parent
-1.0             eSplitLevelMin # [MeV]
-1000.0          eSplitLevelMax # [MeV]
+40              nSplit         # number of energy thresholds where splitting occurs
+1.0             SplitEnergyMin # [MeV]
+100.0           SplitEnergyMax # [MeV]
 
 #INPUTSEED
-T               UseInputSeedFile
+F               UseInputSeedFile
 
 #TEST
 T           DoRunTest
