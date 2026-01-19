@@ -2,8 +2,8 @@
 # portions used with permission 
 # For more information, see http://csem.engin.umich.edu/tools/swmf
 
-DEFAULT_TARGET = PARMISAN
-DEFAULT_EXE    = PARMISAN.exe
+DEFAULT_TARGET = MITTENS
+DEFAULT_EXE    = MITTENS.exe
 
 default : ${DEFAULT_TARGET}
 
@@ -18,10 +18,10 @@ help:
 	@echo '    <default> ${DEFAULT_TARGET} in stand alone mode'
 	@echo ' '
 	@echo '    help          (show makefile option list)'
-	@echo '    install       (install PARMISAN)'
+	@echo '    install       (install MITTENS)'
 	@echo ' '
 	@echo '    LIB           (Component library libSP for SWMF)'
-	@echo '    PARMISAN       (make PARMISAN.exe)'
+	@echo '    MITTENS       (make MITTENS.exe)'
 	@echo '    NOMPI         (NOMPI library for compilation without MPI)'
 	@echo ' '
 	@echo '    rundir        (create run directory for standalone or SWMF)'
@@ -42,21 +42,15 @@ LIB:    install
 	cd src;          make LIB
 	cd srcInterface; make LIB
 
-PARMISAN:
+MITTENS:
 	cd ${SHAREDIR}; ${MAKE} LIB
 	cd ${EMPIRICALCRDIR}; ${MAKE} LIB
 	cd ${TIMINGDIR}; ${MAKE} LIB
 	cd src; ${MAKE} LIB
-	cd src; ${MAKE} PARMISAN
+	cd src; ${MAKE} MITTENS
+
 NOMPI:
 	cd util/NOMPI/src; make LIB
-
-PTSA:
-	cd ${SHAREDIR}; ${MAKE} LIB
-	cd ${EMPIRICALCRDIR}; ${MAKE} LIB
-	cd ${TIMINGDIR}; ${MAKE} LIB
-	cd src; ${MAKE} LIB
-	cd src; ${MAKE} PTSA
 
 COMPONENT = PT
 
@@ -71,10 +65,10 @@ rundir:
 		cp ${DIR}/share/JobScripts/job.*${MACHINE}* ${RUNDIR}/; \
 		cp ${DIR}/share/JobScripts/*.${MACHINE}.pl ${RUNDIR}/; \
 		rm -f ${RUNDIR}/*_TMP_* ${DIR}/share/JobScripts/*_TMP_*; \
-		cp -f Param/PARAM.in.test ${RUNDIR}/PARAM.in; \
+		cp -f Param/PARAM.in.MFLAMPA ${RUNDIR}/PARAM.in; \
+		cp -f UpdateMittensParam.sh ${RUNDIR}/UpdateMittensParam.sh; \
 		touch ${RUNDIR}/core; chmod 444 ${RUNDIR}/core; \
 		cd ${RUNDIR}; ln -s ${BINDIR}/${DEFAULT_EXE} .; \
-		ln -s ${BINDIR}/PTSA.exe .; \
 		cp ${PTDIR}/Param/seed.in.test seed.in ; \
 	fi);
 
@@ -94,7 +88,7 @@ allclean:
 # Testing
 
 test:
-	@echo "PT/PARMISAN has no standalone test yet"
+	@echo "PT/MITTENS has no standalone test yet"
 
 TESTDIR = run_test
 BLESS=NO

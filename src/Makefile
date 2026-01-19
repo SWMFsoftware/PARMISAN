@@ -25,20 +25,18 @@ OBJECTS = \
 	ModShock.o \
 	ModUnit.o \
 	ModAdvance.o \
-	ModDistribution.o \
-	ModTestFieldline.o
+	ModDistribution.o
 
 ModSize.f90: ModSize_orig.f90
 	cp -f ModSize_orig.f90 ModSize.f90
 
-# Object files not included into the library
-# OBJECTS_EXE = PT_stand_alone.o
 
-EXE = ${BINDIR}/PARMISAN.exe
+
+EXE = ${BINDIR}/MITTENS.exe
 
 SEARCH_EXTRA = -I${LIBRARYDIR} -I${COUPLERDIR} -I${EMPIRICALCRDIR}
 
-MY_LIB = libPARMISAN.a
+MY_LIB = libMITTENS.a
 
 # Other required libraries
 LIBSHARE  = ${LIBDIR}/libSHARE.a
@@ -59,12 +57,14 @@ ${MY_LIB}: ${MODULES} ${OBJECTS} \
 	${AR} ${MY_LIB} ${OBJECTS}
 
 # Additional ibraries should be compiled first
-${OBJECTS_EXE}: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
+# ${OBJECTS_EXE}: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
+# Object files not included into the library
+OBJECTS_EXE = PT_stand_alone.o
 
-PARMISAN:
+MITTENS:
 	make ${EXE}
 	@echo ' '
-	@echo Program PARMISAN has been brought up to date.
+	@echo Program MITTENS has been brought up to date.
 	@echo ' '  
 
 ${EXE}: ${OBJECTS_EXE}
@@ -74,26 +74,6 @@ ${EXE}: ${OBJECTS_EXE}
 		ar -x ${LIBTIMING}; \
 		ar -x ${LIBSHARE}
 	${LINK.f90} -o ${EXE} ${OBJECTS_EXE} Tmp_/*.o \
-		${LflagMpi}
-	rm -rf Tmp_
-
-PT_stand_alone.o: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
-
-PTSA_EXE = ${BINDIR}/PTSA.exe
-
-PTSA:
-	make ${PTSA_EXE}
-	@echo ' '
-	@echo Program DSA has been brought up to date.
-	@echo ' '
-
-${PTSA_EXE}: PT_stand_alone.o
-	rm -rf Tmp_; mkdir Tmp_
-	cd Tmp_; \
-		ar -x ../${MY_LIB}; \
-		ar -x ${LIBTIMING}; \
-		ar -x ${LIBSHARE}
-	${LINK.f90} -o ${PTSA_EXE} PT_stand_alone.o Tmp_/*.o \
 		${LflagMpi}
 	rm -rf Tmp_
 

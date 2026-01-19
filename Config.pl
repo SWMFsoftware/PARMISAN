@@ -12,7 +12,7 @@ push @INC, ".";
 use strict;
 
 our $Component = "PT";
-our $Code = "PARMISAN";
+our $Code = "MITTENS";
 our $MakefileDefOrig = 'src/Makefile.def';
 our @Arguments= @ARGV;
 
