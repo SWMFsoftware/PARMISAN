@@ -1,7 +1,7 @@
 !  Copyright (C) 2002 Regents of the University of Michigan,
 !  portions used with permission
 !  For more information, see http://csem.engin.umich.edu/tools/swmf
-program PARMISAN
+program MITTENS
    use ModKind
    use PT_ModProc,   ONLY: iProc, nProc, iComm
    use ModUtilities, ONLY: remove_file, touch_file, CON_Stop
@@ -23,7 +23,7 @@ program PARMISAN
 
    integer      :: iError
    integer      :: iSession = 1
-   real(Real8_) :: CpuTimeStart
+   real(Real8_) :: CpuTimeStart, IterStart, IterStop
    logical      :: IsFirstSession = .true.
 
    ! Initialization of MPI/parallel message passing.
@@ -36,12 +36,10 @@ program PARMISAN
    ! Initialize time which is used to check CPU time
    CpuTimeStart = MPI_WTIME()
 
-   ! Delete PARMISAN.SUCCESS and PARMISAN.STOP files if found
+   ! Delete MITTENS.SUCCESS and MITTENS.STOP files if found
    if(iProc==0)then
-      call remove_file('PARMISAN.SUCCESS')
-      call remove_file('PARMISAN.STOP')
-      ! call create_files(3600.0, 1.0)
-      ! call CON_Stop("error")
+      call remove_file('MITTENS.SUCCESS')
+      call remove_file('MITTENS.STOP')
    end if
 
    ! Mark the run as a stand alone
@@ -67,12 +65,12 @@ program PARMISAN
          call PT_initialize    ! Similar to SP_init_session, NO origin points
          call init_time        ! StartTime, StartTimeJulian from StartTime_I
       end if
-
       TIMELOOP: do
          if(stop_condition_true()) EXIT TIMELOOP
          if(is_time_to_stop()) EXIT SESSIONLOOP
-
+         IterStart =  MPI_WTIME()
          call PT_run
+         if(iProc.eq.0) write(*,*) "iteration took: ", MPI_WTIME() - IterStart
          ! call show_progress
       end do TIMELOOP
 
@@ -92,8 +90,8 @@ program PARMISAN
    ! Finish writing to log file
    call PT_finalize
 
-   ! Touch PARMISAN.SUCCESS
-   if(iProc==0) call touch_file('PARMISAN.SUCCESS')
+   ! Touch MITTENS.SUCCESS
+   if(iProc==0) call touch_file('MITTENS.SUCCESS')
    
    ! Finalize MPI
    call MPI_Finalize(iError)
@@ -124,9 +122,9 @@ contains
           IsTimeToStop=.true.
        end if
        if(.not.IsTimeToStop .and. UseStopFile) then
-          inquire(file='PARMISAN.STOP',exist=IsTimeToStop)
+          inquire(file='MITTENS.STOP',exist=IsTimeToStop)
           if (IsTimeToStop) &
-               write(*,*)'PARMISAN.STOP file exists: received stop signal'
+               write(*,*)'MITTENS.STOP file exists: received stop signal'
        end if
     end if
     if(nProc==1) RETURN
@@ -134,6 +132,6 @@ contains
 
   end function is_time_to_stop
   !============================================================================
-end program PARMISAN
+end program MITTENS
 !==============================================================================
 

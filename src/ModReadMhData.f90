@@ -35,7 +35,8 @@ module PT_ModReadMhData
   character(len=20)          :: TypeMhDataFile
 
   ! IO unit for file with list of tags
-  integer:: iIOTag
+  integer :: iIOTag
+  integer :: iLonFile = 0, iLatFile = 0
 
 contains
    !============================================================================
@@ -57,6 +58,9 @@ contains
          ! the input directory
          call read_var('NameInputDir', NameInputDir)
          call fix_dir_name(NameInputDir) ! adds "/" if not present
+
+         call read_var('iLonFile', iLonFile)
+         call read_var('iLatFile', iLatFile)
       case('#MHDATA')
          ! type of data files
          call read_var('TypeFile', TypeMhDataFile)
@@ -170,11 +174,14 @@ contains
       end if
       
       call iblock_to_lon_lat(iLine, iLon, iLat)
+
       ! set the file name
       write(NameFile,'(a,i3.3,a,i3.3,a)') &
-         trim(NameInputDir)//NameMHData//'_',iLon,&
-         '_',iLat, '_'//trim(StringTag)//NameFileExtension
+         trim(NameInputDir)//NameMHData//'_',iLonFile,&
+         '_',iLatFile, '_'//trim(StringTag)//NameFileExtension
+
       inquire(file=NameFile,exist=Used_B(iLine))
+
       if(.not.Used_B(iLine))then
          write(*,'(a)')NameSub//': the file '//NameFile//' is not found!'
          write(*,'(a)')NameSub//': the line marked as unused'

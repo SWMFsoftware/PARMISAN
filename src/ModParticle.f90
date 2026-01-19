@@ -21,16 +21,15 @@ module PT_ModParticle
                          Time_         = 3,  &
                          R_            = 4,  &
                          Weight_       = 5,  &
-                         ParentIndex_  = 6,  &
-                         NumChildren_  = 7,  &
-                         SplitLevel_   = 8,  &
-                         nSplitVar     = 8,  & ! number of variables if splitting
+                         HasSplit_     = 6,  &
+                         SplitLevel_   = 7,  &
+                         nSplitVar     = 7,  & ! number of variables if splitting
                          nVar          = 5     ! number of variables if not splitting
 
-   integer      :: nSplitLev, nSplitMax      ! defaults: 40, 80
-   real         :: eSplitLevelMin ! = 1.d0*MeV      ! energy of first split level
-   real         :: eSplitLevelMax ! = 20000.d0*MeV  ! energy of last split level
-   real, allocatable :: eSplitLev_I(:)
+   integer      :: nSplit
+   real         :: SplitEnergyMin ! = 1.d0*MeV      ! energy of first split level
+   real         :: SplitEnergyMax ! = 20000.d0*MeV  ! energy of last split level
+   real, allocatable :: SplitEnergy_I(:)
    logical :: UseSplit = .false.
 
 contains
@@ -47,14 +46,13 @@ contains
       case('#PARTICLE')
          call read_var('nInject', nInject)
          call read_var('UseSplit', UseSplit)
-         call read_var('nSplitLev', nSplitLev)
-         call read_var('nSplitMax', nSplitMax)
-         call read_var('eSplitLevelMin', eSplitLevelMin)
-         call read_var('eSplitLevelMax', eSplitLevelMax)
+         call read_var('nSplit', nSplit)
+         call read_var('SplitEnergyMin', SplitEnergyMin)
+         call read_var('SplitEnergyMax', SplitEnergyMax)
 
          ! Convert to joules
-         eSplitLevelMax = eSplitLevelMax*cMeV
-         eSplitLevelMin = eSplitLevelMin*cMeV
+         SplitEnergyMax = SplitEnergyMax*cMeV
+         SplitEnergyMin = SplitEnergyMin*cMeV
          
       case default
          call CON_stop(NameSub//' Unknown command '//NameCommand)
@@ -70,7 +68,7 @@ contains
       MaxTotalParticles = nVertexMax*nInject
       
       if(UseSplit) then
-         MaxTotalParticles = MaxTotalParticles + MaxTotalParticles*nSplitMax
+         MaxTotalParticles = MaxTotalParticles + MaxTotalParticles*nSplit
          allocate(Particle_IV(1:MaxTotalParticles, 1:nSplitVar))
          call init_split_grid
       else
@@ -87,28 +85,28 @@ contains
       use PT_ModProc, ONLY: iProc
       
       character(len=*), parameter :: OutputDir = 'PT/IO2/'
-      character(len=*), parameter :: SplitFile = 'split_levels.dat'
+      character(len=*), parameter :: SplitFile = 'split_energies.dat'
 
       real :: dLogEsplit
       ! Loop variable:
-      integer :: iLev
+      integer :: iSplit
       !--------------------------------------------------------------------------
 
-      if(.not.allocated(eSplitLev_I)) allocate(eSplitLev_I(1:nSplitLev+1))
+      if(.not.allocated(SplitEnergy_I)) allocate(SplitEnergy_I(1:nSplit+1))
 
-      eSplitLev_I(1)           = eSplitLevelMin
-      eSplitLev_I(1+nSplitLev) = eSplitLevelMax
-      dLogEsplit = log10(eSplitLevelMax/eSplitLevelMin)/real(nSplitLev)
+      SplitEnergy_I(1)        = SplitEnergyMin
+      SplitEnergy_I(1+nSplit) = SplitEnergyMax
+      dLogEsplit = log10(SplitEnergyMax/SplitEnergyMin)/real(nSplit)
 
-      do iLev = 2, nSplitLev
-         eSplitLev_I(iLev) = eSplitLev_I(iLev-1)*10**dLogEsplit
+      do iSplit = 2, nSplit
+         SplitEnergy_I(iSplit) = SplitEnergy_I(iSplit-1)*10**dLogEsplit
       end do
 
       ! Write energy splitting grid to file
       if(iProc==0)then
          open(45,file=OutputDir//splitFile,status='unknown')
-         do iLev = 1, nSplitLev+1
-            write(45,*)iLev, eSplitLev_I(iLev)/cMeV
+         do iSplit = 1, nSplit+1
+            write(45,*)iSplit, SplitEnergy_I(iSplit)/cMeV
          end do
          close(45)
       end if
@@ -141,20 +139,19 @@ contains
          ! statistical weight of psuedo-particle is:
          ! thermal energy density at the shock * dSoverB
          call calc_weight(Particle_IV(i, Time_), &
-                             Particle_IV(i, LagrCoord_), &
-                             Particle_IV(i, Weight_))
+                          Particle_IV(i, LagrCoord_), &
+                          Particle_IV(i, Weight_))
 
          call increase_total_weight(Particle_IV(i, Weight_))
 
          ! particle splitting variables
-         ! parent index = index of first parent (to track and limit maximum number of splits)
-         ! numchildren = number of child particles (to track and limit maximum number of splits)
-         ! splitlevel = number of splits removed from first parent (to track next split)
+         ! HasSplit = whether this particle has already split
+         ! SplitLevel = index of energy splitting grid to check if particle has crossed
          if(UseSplit) then
-            Particle_IV(i, ParentIndex_) = i
-            Particle_IV(i, NumChildren_) = 0
+            Particle_IV(i, HasSplit_) = 0
             Particle_IV(i, SplitLevel_) = 1
          end if
+
          nParticleOnLine(iLine) = nParticleOnLine(iLine) + 1
       end do
       
@@ -170,19 +167,17 @@ contains
       real    :: Energy
 
       DoSplit = .false.
+      
       ! current energy threshold index of splitting
       SplitLevel = int(Particle_IV(iParticle, SplitLevel_))
-      ! total number of children from first parent
-      ParentNumChildren = int(Particle_IV(int(Particle_IV(iParticle, ParentIndex_)), &
-                                         NumChildren_))
       
       ! if max split energy threshold has not yet been reached
       ! if particle crosses next energy threshold
-      ! if max child particles per first parent has not yet been reached
+      ! if particle has not yet split
       Energy = momentum_to_kinetic_energy(Particle_IV(iParticle, Momentum_))
-      if(SplitLevel.lt.nSplitLev & 
-         .and.Energy.gt.eSplitLev_I(SplitLevel) &
-         .and.ParentNumChildren.le.nSplitMax) DoSplit = .true.
+      if(SplitLevel.le.nSplit & 
+         .and.Energy.gt.SplitEnergy_I(SplitLevel) &
+         .and.Particle_IV(iParticle, HasSplit_).eq.0) DoSplit = .true.
 
    end subroutine check_split
    !============================================================================
@@ -195,16 +190,15 @@ contains
 
       ! index of newly split particle
       SplitInd = nParticleOnLine(iLine) + 1
-      ! index of first parent
-      ParentIndex = int(Particle_IV(iParticle, ParentIndex_))
       
       ! increase split level of current particle
       Particle_IV(iParticle, SplitLevel_) = Particle_IV(iParticle, SplitLevel_) + 1
-      ! increase total number of children from first parent
-      Particle_IV(ParentIndex, NumChildren_) = Particle_IV(ParentIndex, NumChildren_) + 1
 
       ! Copy particle information
       Particle_IV(SplitInd, :) = Particle_IV(iParticle, :)
+
+      ! Record particle has split - (new particle can still split again)
+      Particle_IV(iParticle, HasSplit_) = 1
 
       ! adjust weights of split particles
       ! conserves total weight
@@ -229,12 +223,11 @@ contains
       real    :: Energy, Timestep
 
       ! Loop over particles on this line
-      ! with particle splitting nParticleOnLine needs to change
-      ! TODO: change to do while loop?
+      ! with particle splitting, new particles can be added - while loop needed
       iParticle = 1
-      ! PARTICLE: do iParticle = 1, nParticleOnLine(iLine)
       PARTICLE: do while(iParticle.le.nParticleOnLine(iLine))
          ! particle time loop    
+         ! adaptive timestepping
 
          do while(Particle_IV(iParticle, Time_).lt.TimeLimit) 
             
@@ -255,21 +248,24 @@ contains
                                  Particle_IV(iParticle, Weight_) * Timestep / TimeWindow)
             end if
 
-            ! if particle leaves spatial boundary set time to large number
             if(IsOutside) then
-               Particle_IV(iParticle, Time_) = huge(0.0)
-            end if
-
-            ! particle splitting:
-            ! total weight is conserved
-            if(UseSplit) then
-               call check_split(iParticle, DoSplit)
-               if(DoSplit) then          
-                  call split_particle(iParticle, iLine)
+               ! Remove particle from simulation - shift all particles down one index
+               ! subtract one from iParticle so that shifted particle is not skipped in loop
+               call remove_particle_from_sim(iParticle, iLine)
+               iParticle = iParticle - 1
+            else
+               ! particle splitting:
+               ! total weight is conserved
+               if(UseSplit) then
+                  call check_split(iParticle, DoSplit)
+                  if(DoSplit) then          
+                     call split_particle(iParticle, iLine)
+                  end if
                end if
             end if
 
          end do ! particle time loop
+         ! move to next particle
          iParticle = iParticle + 1
       end do PARTICLE 
 
@@ -304,8 +300,23 @@ contains
       call get_particle_location(Particle_IV(iParticle, Time_), &
                                  Particle_IV(iParticle, LagrCoord_), &
                                  Particle_IV(iParticle, R_))
-
    end subroutine advance_particle
+   !============================================================================
+   subroutine remove_particle_from_sim(iParticle, iLine)
+      integer, intent(in) :: iParticle, iLine
+      integer :: i
+
+      if(iParticle.lt.nParticleOnLine(iLine)) then
+         ! Shift all particles down one index
+         Particle_IV(iParticle:nParticleOnLine(iLine)-1, :) = &
+            Particle_IV(iParticle+1:nParticleOnLine(iLine), :)
+      end if
+      ! set last particle to zero
+      Particle_IV(nParticleOnLine(iLine), :) = 0
+      ! reduce number of particles on this line
+      nParticleOnLine(iLine) = nParticleOnLine(iLine) - 1
+
+   end subroutine remove_particle_from_sim
    !============================================================================
    subroutine get_random_initial_energy(Energy)
       real, intent(out) :: Energy

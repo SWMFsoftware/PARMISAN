@@ -149,10 +149,10 @@ contains
         iShockNewDown = iShockNew - WidthDown
 
         ! Take log of B, dB, and rho before interpolation - helps at inner boundary
-        ! where(MhdState1(BState_:RhoState_, :).ne.0) &
-        !     MhdState1(BState_:RhoState_, :) = log10(MhdState1(BState_:RhoState_, :))
-        ! where(MhdState2(BState_:RhoState_, :).ne.0) &
-        !     MhdState2(BState_:RhoState_, :) = log10(MhdState2(BState_:RhoState_, :))
+        where(MhdState1(BState_:RhoState_, :).ne.0) &
+            MhdState1(BState_:RhoState_, :) = log10(MhdState1(BState_:RhoState_, :))
+        where(MhdState2(BState_:RhoState_, :).ne.0) &
+            MhdState2(BState_:RhoState_, :) = log10(MhdState2(BState_:RhoState_, :))
     
         ! interpolate fieldline in time
         CurrentState = (1 - Alpha) * MhdState1 + Alpha * MhdState2
@@ -204,12 +204,12 @@ contains
         end do
 
         ! Undo log
-        ! where(MhdState1(BState_:RhoState_, :).ne.0) &
-        !     MhdState1(BState_:RhoState_, :) = 10.0**MhdState1(BState_:RhoState_, :)
-        ! where(MhdState2(BState_:RhoState_, :).ne.0) &
-        !     MhdState2(BState_:RhoState_, :) = 10.0**MhdState2(BState_:RhoState_, :)
-        ! where(CurrentState(BState_:RhoState_, :).ne.0) &
-        !     CurrentState(BState_:RhoState_, :) = 10.0**CurrentState(BState_:RhoState_, :)
+        where(MhdState1(BState_:RhoState_, :).ne.0) &
+            MhdState1(BState_:RhoState_, :) = 10.0**MhdState1(BState_:RhoState_, :)
+        where(MhdState2(BState_:RhoState_, :).ne.0) &
+            MhdState2(BState_:RhoState_, :) = 10.0**MhdState2(BState_:RhoState_, :)
+        where(CurrentState(BState_:RhoState_, :).ne.0) &
+            CurrentState(BState_:RhoState_, :) = 10.0**CurrentState(BState_:RhoState_, :)
 
         ! SHOCK SHARPENING ALGORITHM GOES HERE
         ! Currently increase dLogRho by the maximum dLogRho calculated from the advected rho
@@ -395,8 +395,8 @@ contains
         Momentum = (3.0*X_I(2))**(1.0/3.0)
 
         ! Need to figure out where to put X_I index variables - hardcoded 1 = LagrCoord_
-        call calculate_dLogRho(X_I(1), dLogRhodTau)
-        ! call interpolate_statevar(Time, X_I(1), dLogRho_, dLogRhodTau)
+        ! call calculate_dLogRho(X_I(1), dLogRhodTau)
+        call interpolate_statevar(Time, X_I(1), dLogRho_, dLogRhodTau)
 
         ! get values at particle current location
         call interpolate_statevar(Time, X_I(1), BState_, B)
@@ -420,7 +420,6 @@ contains
         DriftCoeff(2) = X_I(2) * dLogRhodTau
         DiffCoeff(2) = 0.0
                 
-        ! pri
         ! calculate timestep based on coefficients
         ! diffusion >> drift
         ! Maximum spatial step size is less than shockwidth
