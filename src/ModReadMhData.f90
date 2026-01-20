@@ -147,6 +147,9 @@ contains
    real:: DataInputTimeOld
    ! timetag
    character(len=50):: StringTag
+   ! status of reading .lst file
+   integer :: ioStat, SleepCounter = 0
+   integer :: TimeToWait, TimeToQuit
 
    ! check whether need to apply offset, default is .true.
 
@@ -159,8 +162,35 @@ contains
    end if
 
    ! get the tag for files
-   read(iIOTag,'(a)') StringTag
-   
+   ! read(iIOTag,'(a)') StringTag
+
+   ! For Feb 2026 Artemis real-time demonstration
+   ! Continually check that .lst file is updated and wait until it is
+   ! Terminate if .lst is not updated after 2 minutes
+   TimeToWait = 3   ! seconds
+   TimeToQuit = 120 ! seconds
+   do 
+      read(iIOtag, '(a)', iostat = ioStat) StringTag
+      ! sometimes the file returns empty string and the next read is successful
+      ! if the string is empty, the fieldline will be marked as unused
+      if(StringTag.eq.'') read(iIOtag, '(a)', iostat = ioStat) StringTag
+      if(ioStat.lt.0) then
+         backspace(iIOTag)
+         SleepCounter = SleepCounter + TimeToWait
+         call sleep(TimeToWait)
+         if(SleepCounter.gt.TimeToQuit) &
+            call CON_Stop(NameSub//': .lst file not updated for 120 seconds.')
+         cycle
+      else if(ioStat.gt.0) then
+         call CON_Stop(NameSub//': error reading .lst file.')
+      else
+         print *, 'Successful: ', StringTag
+         exit
+      end if
+
+   end do
+   ! ---------------------------------------------
+
    ! save the current data input time
    DataInputTimeOld = DataInputTime
    ! read the data
