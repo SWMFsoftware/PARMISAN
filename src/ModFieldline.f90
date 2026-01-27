@@ -114,6 +114,7 @@ contains
     end subroutine
     !============================================================================
     subroutine advect_fieldline(Alpha, iShockNewIn, NewTime)
+        use PT_ModProc, only: iProc
         real, intent(in) :: Alpha, NewTime
         integer, intent(in) :: iShockNewIn
 
@@ -495,10 +496,10 @@ contains
         IsOutside = .false.
         
         ! reflecting boundary condition - inner spatial boundary
-        if(LagrCoord.lt.MinLagr(iLine)) then
-             LagrCoord = MinLagr(iLine) + 1.0
-             call interpolate_statevar(Time, LagrCoord, RState_, R)
-        end if
+        ! if(LagrCoord.lt.MinLagr(iLine)) then
+        !      LagrCoord = MinLagr(iLine) + 1.0
+        !      call interpolate_statevar(Time, LagrCoord, RState_, R)
+        ! end if
 
         ! absorbing boundary conditions - outer spatial boundary
         if(LagrCoord.lt.MinLagr(iLine)) IsOutside = .true.
