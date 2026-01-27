@@ -184,7 +184,7 @@ contains
       else if(ioStat.gt.0) then
          call CON_Stop(NameSub//': error reading .lst file.')
       else
-         print *, 'Successful: ', StringTag
+         ! print *, 'Successful: ', StringTag
          exit
       end if
 
