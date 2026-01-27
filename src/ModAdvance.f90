@@ -18,7 +18,6 @@ contains
         use PT_ModFieldline,    only: set_fieldline, advect_fieldline, &
                                       save_fieldline_data
         use PT_ModDistribution, only: set_lagr_bins, update_integral_over_finj
-        use PT_ModPlot,         only: save_distribution_function
         use PT_ModTime,         only: iIter, PTTime, DataInputTime
         use PT_ModProc,         only: iComm, iError, iProc
 
@@ -87,10 +86,6 @@ contains
                 if(NextTimeStep.ge.TimeLimit) EXIT PROGRESS
 
             end do PROGRESS
-            
-            ! All processors must finish current timestep before saving solution
-            call MPI_BARRIER(iComm, iError)
-            call save_distribution_function(iIter + 1, TimeLimit)
 
         end do LINE
 

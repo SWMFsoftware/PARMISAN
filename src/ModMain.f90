@@ -202,11 +202,13 @@ contains
       use PT_ModReadMhData,    ONLY: read_mh_data
       use PT_ModTime,          ONLY: PTTime, DataInputTime, iIter
       use PT_ModAdvance,       ONLY: advance
-      use PT_ModPlot,          only: save_analytic_solution, save_shock_location
-      
+      use PT_ModPlot,          only: save_analytic_solution, save_shock_location, &
+                                     save_plot_all, save_distribution_function
+      use PT_ModProc,          only: iComm, iError
+
       ! advance the solution in time
       logical, save :: IsFirstCall = .true.
-      real :: Dt ! time increment in the current call
+      real :: TimeLimit ! Time at end of current timestep
 
       ! write the initial background state to the output file
       !--------------------------------------------------------------------------
@@ -245,18 +247,25 @@ contains
          call save_shock_location
       end if
 
-      ! run the model from PTTime to min(DataInputTime, TimeMax)
-      if(iProc.eq.0) write(*,*) 'Advancing from: ', PTTime, min(DataInputTime, TimeMax)
-      call advance(min(DataInputTime, TimeMax))
+      TimeLimit = min(DataInputTime, TimeMax)
 
+      ! run the model from PTTime to TimeLimit
+      if(iProc.eq.0) write(*,*) 'Advancing from: ', PTTime, TimeLimit
+      call advance(TimeLimit)
+      
+      ! All processors must finish current timestep before saving solution
+      call MPI_BARRIER(iComm, iError)
+      if(DoRunTest) then
+         call save_distribution_function(iIter + 1, TimeLimit)
+      else
+         call save_plot_all(iIter + 1, TimeLimit)
+      end if
+      
       ! update time & iteration counters
       iIter = iIter + 1
-      Dt = min(DataInputTime, TimeMax) - PTTime
-      PTTime = PTTime + Dt
-      
-      ! call save_plot_all
+      PTTime = TimeLimit
 
-      ! save restart if needed
+      ! -- restart not implemented yet -- !
       ! call check_save_restart(Dt)
    end subroutine run
    !============================================================================
