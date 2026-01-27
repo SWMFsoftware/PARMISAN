@@ -17,7 +17,6 @@ module PT_ModPlot
   character(len=*), parameter :: LagrBinFile = 'lagr_bin.dat'
   character(len=*), parameter :: RFile = 'R_bin.dat'
   character(len=*), parameter :: ShockLocFile = 'shock_loc.dat'
-  character(len=*), parameter :: FinjFile = 'finj.dat'
   
 contains
   !============================================================================
@@ -55,19 +54,70 @@ contains
 
     ! Create shock location file and record shock at surface at t = 0
     call touch_file(OutputDir//ShockLocFile)
-    ! call touch_file(OutputDir//FinjFile)
 
   end subroutine init
   !============================================================================
-  subroutine save_finject(Time, LagrCoord, fInj)
-    real, intent(in) :: Time, LagrCoord, fInj
-   
+  subroutine save_plot_all(Iter, Time)
+    use PT_ModDistribution, only: Counts_II, nEnergyBins, nLagrBins, TotalWeight, &
+                                  calculate_flux, Counts_Outside_I
+    use ModMpi, ONLY: MPI_reduce_real_array, MPI_SUM, MPI_reduce_real_scalar
+    real, intent(in) :: Time
+    integer, intent(in) :: Iter
+    integer :: iTime, iLagr
+    character(len = 50) :: outputFile
 
-    open(104, file = OutputDir//FinjFile, position = 'append', action = 'write')
-    write(104, '(3e15.6)') Time, LagrCoord, fInj
-    close(104)
+    ! dummy variables during integration since they do not reset
+    real :: TotalWeightProc
+    real, allocatable :: CountsOutsideProc(:)
 
-  end subroutine save_finject
+    ! Save fluxes stored at different radial distances
+    !--------------------------------------------------------------------------
+    ! placeholder for original total weight - need to reset after summing over all processors
+
+    TotalWeightProc = TotalWeight
+    allocate(CountsOutsideProc(1:nEnergyBins))
+    CountsOutsideProc = Counts_Outside_I
+
+    call MPI_reduce_real_array(Counts_II, nEnergyBins*nLagrBins, MPI_SUM, 0, &
+          iComm, iError)
+    call MPI_reduce_real_array(Counts_Outside_I, nEnergyBins, MPI_SUM, 0, iComm, iError)
+    call MPI_reduce_real_scalar(TotalWeight, MPI_SUM, 0, iComm, iError)
+
+    if(iProc/=0) then
+      ! Reset Counts for next timestep
+      Counts_II = 0.0
+    else
+      ! Convert counts to distribution function - variable name does not change
+      call calculate_flux(Time)
+
+      ! append time of output to time file
+      open(901, file=OutputDir//TimeFile, position="append", action="write")
+        write(901, *) Time
+      close(901)
+
+      ! save updated positions of lagr coord bins
+      call save_position_bins(Time)
+
+      ! create output distribution function file name
+      write(outputFile, '(A15, I0)') 'flux_time_', int(Time)
+      outputFile = adjustl(outputFile)
+
+      ! output distribution function (nEnergy x nLagrCoord)
+      open(902, file=OutputDir//trim(outputFile), status='unknown', action="READWRITE")
+      do iLagr = 1, nLagrBins
+        write(902,'(4000e15.6)') Counts_II(:, iLagr) 
+      end do
+      close(902)
+
+      ! Reset Counts for next timestep
+      Counts_II = 0.0
+      ! Reset total weight of processor to original value
+      TotalWeight = TotalWeightProc
+      Counts_Outside_I = CountsOutsideProc
+      deallocate(CountsOutsideProc)
+    end if
+
+  end subroutine save_plot_all
   !============================================================================
   subroutine save_shock_location
 
@@ -110,21 +160,28 @@ contains
   !============================================================================
   subroutine save_distribution_function(Iter, Time)
     use PT_ModDistribution, only: Counts_II, nEnergyBins, nLagrBins, TotalWeight, &
-                                  calculate_distribution_function
+                                  calculate_distribution_function, Counts_Outside_I
     use ModMpi, ONLY: MPI_reduce_real_array, MPI_SUM, MPI_reduce_real_scalar
     real, intent(in) :: Time
     integer, intent(in) :: Iter
     integer :: iTime, iLagr
     character(len = 50) :: outputFile
 
+    ! dummy variables during integration since they do not reset
     real :: TotalWeightProc
+    real, allocatable :: CountsOutsideProc(:)
 
     ! Save fluxes stored at different radial distances
     !--------------------------------------------------------------------------
     ! placeholder for original total weight - need to reset after summing over all processors
+    
     TotalWeightProc = TotalWeight
+    allocate(CountsOutsideProc(1:nEnergyBins))
+    CountsOutsideProc = Counts_Outside_I
+    
     call MPI_reduce_real_array(Counts_II, nEnergyBins*nLagrBins, MPI_SUM, 0, &
          iComm, iError)
+    call MPI_reduce_real_array(Counts_Outside_I, nEnergyBins, MPI_SUM, 0, iComm, iError)
     call MPI_reduce_real_scalar(TotalWeight, MPI_SUM, 0, iComm, iError)
 
     if(iProc/=0) then
@@ -155,6 +212,8 @@ contains
       Counts_II = 0.0
       ! Reset total weight of processor to original value
       TotalWeight = TotalWeightProc
+      Counts_Outside_I = CountsOutsideProc
+      deallocate(CountsOutsideProc)
     end if
 
   end subroutine save_distribution_function

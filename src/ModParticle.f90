@@ -17,7 +17,7 @@ module PT_ModParticle
    integer, allocatable :: nParticleOnLine(:)
 
    integer, parameter :: LagrCoord_    = 1,  &
-                         Momentum_     = 2,  &                      
+                         Momentum_     = 2,  & ! p^3 / 3                     
                          Time_         = 3,  &
                          R_            = 4,  &
                          Weight_       = 5,  &
@@ -29,7 +29,7 @@ module PT_ModParticle
    integer      :: nSplit
    real         :: SplitEnergyMin ! = 1.d0*MeV      ! energy of first split level
    real         :: SplitEnergyMax ! = 20000.d0*MeV  ! energy of last split level
-   real, allocatable :: SplitEnergy_I(:)
+   real, allocatable :: SplitEnergy_I(:), SplitMomentum_I(:)
    logical :: UseSplit = .false.
 
 contains
@@ -83,6 +83,7 @@ contains
    subroutine init_split_grid()
       
       use PT_ModProc, ONLY: iProc
+      use PT_ModUnit, only: kinetic_energy_to_momentum
       
       character(len=*), parameter :: OutputDir = 'PT/IO2/'
       character(len=*), parameter :: SplitFile = 'split_energies.dat'
@@ -93,13 +94,20 @@ contains
       !--------------------------------------------------------------------------
 
       if(.not.allocated(SplitEnergy_I)) allocate(SplitEnergy_I(1:nSplit+1))
+      if(.not.allocated(SplitMomentum_I)) allocate(SplitMomentum_I(1:nSplit+1))
 
-      SplitEnergy_I(1)        = SplitEnergyMin
-      SplitEnergy_I(1+nSplit) = SplitEnergyMax
+      SplitEnergy_I(1)   = SplitEnergyMin
+
+      SplitMomentum_I(1) = &
+         kinetic_energy_to_momentum(SplitEnergyMin)**3.0/3.0
+      
       dLogEsplit = log10(SplitEnergyMax/SplitEnergyMin)/real(nSplit)
 
-      do iSplit = 2, nSplit
-         SplitEnergy_I(iSplit) = SplitEnergy_I(iSplit-1)*10**dLogEsplit
+      do iSplit = 2, nSplit+1
+         SplitEnergy_I(iSplit) = &
+            10**(log10(SplitEnergyMin) + dLogEsplit*(iSplit-1))
+         SplitMomentum_I(iSplit) = &
+            kinetic_energy_to_momentum(SplitEnergy_I(iSplit))**3.0 / 3.0
       end do
 
       ! Write energy splitting grid to file
@@ -111,17 +119,19 @@ contains
          close(45)
       end if
 
+      ! array no longer needed
+      deallocate(SplitEnergy_I)
+
    end subroutine init_split_grid
    !============================================================================
    subroutine inject_particles(iLine, Time, LagrCoord)
       use PT_ModFieldline, only: get_particle_location, calc_weight
-      use PT_ModDistribution, only: increase_total_weight, InjEnergy
+      use PT_ModDistribution, only: increase_total_weight, InjPcubed, InjEnergy
       use PT_ModUnit, only: kinetic_energy_to_momentum
       
       integer, intent(in) :: iLine
       real, intent(in) :: Time, LagrCoord
       integer :: i, iStart, iEnd
-
 
       iStart = nParticleOnLine(iLine) + 1
       iEnd = nParticleOnLine(iLine) + nInject
@@ -134,7 +144,7 @@ contains
          call get_particle_location(Time, Particle_IV(i, LagrCoord_), Particle_IV(i, R_))
          
          ! Set psuedo-particle energy/momentum
-         Particle_IV(i, Momentum_) = kinetic_energy_to_momentum(InjEnergy)
+         Particle_IV(i, Momentum_) = InjPcubed
 
          ! statistical weight of psuedo-particle is:
          ! thermal energy density at the shock * dSoverB
@@ -164,7 +174,7 @@ contains
       logical, intent(out) :: DoSplit
 
       integer :: SplitLevel, ParentNumChildren
-      real    :: Energy
+      real    :: Momentum
 
       DoSplit = .false.
       
@@ -174,9 +184,9 @@ contains
       ! if max split energy threshold has not yet been reached
       ! if particle crosses next energy threshold
       ! if particle has not yet split
-      Energy = momentum_to_kinetic_energy(Particle_IV(iParticle, Momentum_))
+      Momentum = Particle_IV(iParticle, Momentum_)
       if(SplitLevel.le.nSplit & 
-         .and.Energy.gt.SplitEnergy_I(SplitLevel) &
+         .and.Momentum.gt.SplitMomentum_I(SplitLevel) &
          .and.Particle_IV(iParticle, HasSplit_).eq.0) DoSplit = .true.
 
    end subroutine check_split
@@ -212,7 +222,7 @@ contains
    !============================================================================
    subroutine advance_particles(iLine, TimeLimit, BinTime)
 
-      use PT_ModDistribution, only: bin_particle, TimeWindow
+      use PT_ModDistribution, only: bin_particle, TimeWindow, bin_particle_boundary
       use PT_ModFieldline,    only: check_boundary_conditions
       use PT_ModUnit,         only: momentum_to_kinetic_energy
 
@@ -228,9 +238,7 @@ contains
       PARTICLE: do while(iParticle.le.nParticleOnLine(iLine))
          ! particle time loop    
          ! adaptive timestepping
-
-         do while(Particle_IV(iParticle, Time_).lt.TimeLimit) 
-            
+         TIME: do while(Particle_IV(iParticle, Time_).lt.TimeLimit) 
             ! move particle one timestep
             call advance_particle(iParticle, TimeLimit, Timestep)
             ! check if particle left spatial boundaries
@@ -240,19 +248,23 @@ contains
                                            IsOutside)
             
             ! bin particle in space/time/momentum at end of time step
-            ! Particle weight is its initial weight multipled by the timestep
+            ! Particle weight is its initial weight multipled fraction of binning time spent in bin
             if(Particle_IV(iParticle, Time_).ge.(BinTime-TimeWindow)) then
-               Energy = momentum_to_kinetic_energy(Particle_IV(iParticle, Momentum_))
                call bin_particle(Particle_IV(iParticle, LagrCoord_), &
-                                 Energy,    &
+                                 Particle_IV(iParticle, Momentum_),    &
                                  Particle_IV(iParticle, Weight_) * Timestep / TimeWindow)
             end if
 
             if(IsOutside) then
-               ! Remove particle from simulation - shift all particles down one index
+               ! Remove particle from simulation.
+               ! First, add particle weight to boundary counts.
+               ! Second, shift all particles down one index -
                ! subtract one from iParticle so that shifted particle is not skipped in loop
+               call bin_particle_boundary(Particle_IV(iParticle, Momentum_), &
+                                          Particle_IV(iParticle, Weight_))
                call remove_particle_from_sim(iParticle, iLine)
                iParticle = iParticle - 1
+               exit TIME
             else
                ! particle splitting:
                ! total weight is conserved
@@ -264,7 +276,7 @@ contains
                end if
             end if
 
-         end do ! particle time loop
+         end do TIME ! particle time loop
          ! move to next particle
          iParticle = iParticle + 1
       end do PARTICLE 
@@ -283,7 +295,7 @@ contains
 
       ! Equation advances lagrcoord and p^3/3 not p
       XOld(LagrCoord_) = Particle_IV(iParticle, LagrCoord_)
-      XOld(Momentum_)  = Particle_IV(iParticle, Momentum_)**3.0 / 3.0
+      XOld(Momentum_)  = Particle_IV(iParticle, Momentum_)
 
       ! Advance psuedo-particle one time step
       call euler_sde(XOld, tStepMax, Particle_IV(iParticle, Time_), &
@@ -291,15 +303,17 @@ contains
 
       ! Update Lagrangian coordinate and momentum
       Particle_IV(iParticle, LagrCoord_) = XNew(LagrCoord_)
-      Particle_IV(iParticle, Momentum_) = (3.0*XNew(Momentum_))**(1.0/3.0)
+      Particle_IV(iParticle, Momentum_)  = XNew(Momentum_)
 
       ! Update particle time
       Particle_IV(iParticle, Time_) = Particle_IV(iParticle, Time_) + Timestep
       
       ! Update radial distance (R)
+
       call get_particle_location(Particle_IV(iParticle, Time_), &
                                  Particle_IV(iParticle, LagrCoord_), &
                                  Particle_IV(iParticle, R_))
+
    end subroutine advance_particle
    !============================================================================
    subroutine remove_particle_from_sim(iParticle, iLine)
@@ -311,6 +325,7 @@ contains
          Particle_IV(iParticle:nParticleOnLine(iLine)-1, :) = &
             Particle_IV(iParticle+1:nParticleOnLine(iLine), :)
       end if
+
       ! set last particle to zero
       Particle_IV(nParticleOnLine(iLine), :) = 0
       ! reduce number of particles on this line

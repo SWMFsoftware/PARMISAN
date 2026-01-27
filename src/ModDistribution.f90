@@ -13,11 +13,12 @@ module PT_ModDistribution
     integer :: nEnergyBins, nLagrBins
     integer :: InjEnergyIndex
     real :: eBinMin, eBinMax
-    real :: TimeWindow, TotalWeight, InjEnergy, InjCoeff 
+    real :: TimeWindow, TotalWeight, InjEnergy, InjPcubed, InjCoeff 
     ! Array for storing the counts
-    real, allocatable :: Counts_II(:,:), Counts_Outside_I(:)
+    real, allocatable :: Counts_II(:,:)
+    real, allocatable :: Counts_Outside_I(:)
     ! Bins
-    real, allocatable :: EnergyBin_I(:), LagrBin_I(:)
+    real, allocatable :: EnergyBin_I(:), PcubedBin_I(:), LagrBin_I(:)
     ! How many total injected real protons 
     ! integral of f(p_inj) over phase space)
     real :: IntegralOverfInj
@@ -47,6 +48,7 @@ contains
         eBinMin = eBinMin * ckeV
         eBinMax = eBinMax * ckeV
         InjEnergy = InjEnergy * ckeV
+        InjPcubed = (kinetic_energy_to_momentum(InjEnergy)**3.0) / 3.0
 
         case default
         call CON_stop(NameSub//' Unknown command '//NameCommand)
@@ -62,13 +64,18 @@ contains
         allocate(Counts_II(nEnergyBins, nLagrBins)); Counts_II = 0.0
         allocate(Counts_Outside_I(nEnergyBins));     Counts_Outside_I = 0.0
         allocate(EnergyBin_I(nEnergyBins+1))
+        allocate(PcubedBin_I(nEnergyBins+1))
         allocate(LagrBin_I(nLagrBins+1))
 
         ! energy bins equally space in log10
         dLogE = (log10(eBinMax) - log10(eBinMin)) / (nEnergyBins)
         EnergyBin_I(1) = eBinMin
+        PcubedBin_I(1) = kinetic_energy_to_momentum(eBinMin)**3.0 / 3.0
         do iBin = 2, nEnergyBins+1
-            EnergyBin_I(iBin) = 10.0**(log10(eBinMin)+ dLogE*(iBin-1))
+            EnergyBin_I(iBin) = &
+                10.0**(log10(eBinMin)+ dLogE*(iBin-1))
+            PcubedBin_I(iBin) = &
+                kinetic_energy_to_momentum(EnergyBin_I(iBin))**3.0 / 3.0
         end do
 
         ! index corresponding to bin of injected distribution function
@@ -127,10 +134,10 @@ contains
         ! call save_finject(Time, LagrInject, fPinj)
 
         ! Momentum bin
-        p1 = kinetic_energy_to_momentum(EnergyBin_I(InjEnergyIndex))
-        p2 = kinetic_energy_to_momentum(EnergyBin_I(InjEnergyIndex+1))
-        dP = (p2**3.0 - p1**3.0) / 3.0
-
+        ! p1 = kinetic_energy_to_momentum(EnergyBin_I(InjEnergyIndex))
+        ! p2 = kinetic_energy_to_momentum(EnergyBin_I(InjEnergyIndex+1))
+        ! dP = (p2**3.0 - p1**3.0) / 3.0
+        dP = PcubedBin_I(InjEnergyIndex+1) - PcubedBin_I(InjEnergyIndex)
         IntegralOverfInj = IntegralOverfInj + fPinj * dP * dSOverB
 
     end subroutine update_integral_over_finj
@@ -140,43 +147,59 @@ contains
         TotalWeight = TotalWeight + Weight
     end subroutine increase_total_weight
 !============================================================================
-    subroutine bin_particle(LagrCoord, Energy, Weight)
+    subroutine bin_particle(LagrCoord, Momentum, Weight)
         ! Bin in time, energy, and location
-        real, intent(in) :: LagrCoord, Energy, Weight
+        real, intent(in) :: LagrCoord, Momentum, Weight
         integer :: iL, iE, i
 
         ! if particle is outside bounds of phase space bins - return
         if(LagrCoord.lt.LagrBin_I(1).or.LagrCoord.ge.LagrBin_I(nLagrBins+1)) return
-        if(Energy.lt.EnergyBin_I(1).or.Energy.ge.EnergyBin_I(nEnergyBins+1)) return
+        if(Momentum.lt.PcubedBin_I(1).or.Momentum.ge.PcubedBin_I(nEnergyBins+1)) return
         !--------------------------------------------------------------------------
         ! index of bins particle is in
         iL = minloc(LagrCoord - LagrBin_I, mask = (LagrCoord - LagrBin_I > 0), dim = 1)
-        iE = minloc(Energy - EnergyBin_I, mask = (Energy - EnergyBin_I > 0), dim = 1)
+        iE = minloc(Momentum - PcubedBin_I, mask = (Momentum - PcubedBin_I > 0), dim = 1)
         ! print *, LagrCoord, Energy
         ! Increase the count in this bin by the weight of particle
         Counts_II(iE, iL) = Counts_II(iE, iL) + Weight
 
     end subroutine bin_particle
 !============================================================================
+    subroutine bin_particle_boundary(Momentum, Weight)
+        ! Bin particle outside boundaries in momentum.
+        ! Since lagrangian bins are uniform: inner and outer boundaries
+        !   can be combined
+        ! This is to integrate over and add to simulation integral for 
+        !   correct normalization.
+        real, intent(in) :: Momentum, Weight
+        integer :: iE
+
+        iE = minloc(Momentum - PcubedBin_I, mask = (Momentum - PcubedBin_I > 0), dim = 1)
+        iE = max(iE, 1)
+        Counts_Outside_I(iE) = Counts_Outside_I(iE) + Weight
+
+    end subroutine bin_particle_boundary
+!============================================================================
     subroutine calculate_distribution_function(Time)
         ! Conversion of SDE solution --> PDE solution (F = dS/B * f)
         ! PDF of SDE trajectories in phase space = solution of FP equation
         ! PDF of SDE = P(traj in bin) divided by phase space bin volume
-        ! P(traj in bin) = sum of weights in bin / totalWeight
+        ! P(traj in bin) = probability = sum of weights in bin / totalWeight
         ! Renormalization of the distribution function is necessary
         ! Renormalize by ensuring the integral over phase space of
         ! f_solution = integral over phase space of f_inject
-        ! TODO: need to account for escaped particles!
 
         use PT_ModFieldline, only: calc_dSOverB
         use PT_ModUnit, only: kinetic_energy_to_momentum
 
         real, intent(in) :: Time
         real :: dP, dLagr, p1, p2
-        real :: BinVolume, IntegralOverF, dSOverB
+        real :: BinVolume, IntegralOverF, dSOverB, IntegralOverF_Boundary
         integer :: iE, iL
 
         IntegralOverF = 0.0
+        IntegralOverF_Boundary = sum(Counts_Outside_I) / TotalWeight
+
         do iL = 1, nLagrBins
             dLagr = LagrBin_I(iL+1) - LagrBin_I(iL)
             do iE = 1, nEnergyBins
@@ -184,11 +207,8 @@ contains
                 call calc_dSOverB(Time, LagrBin_I(iL) + 0.5 * dLagr, &
                                   dSOverB)
 
-                p1 = kinetic_energy_to_momentum(EnergyBin_I(iE))
-                p2 = kinetic_energy_to_momentum(EnergyBin_I(iE+1))
-                dP = (p2**3.0 / 3.0) - (p1**3.0 / 3.0)
+                dP = PcubedBin_I(iE+1) - PcubedBin_I(iE)
                 BinVolume = dLagr * dP
-
                 ! probability / phase space bin volume
                 Counts_II(iE, iL) = Counts_II(iE, iL) / &
                                     (BinVolume * TotalWeight)
@@ -197,12 +217,43 @@ contains
                 IntegralOverF = IntegralOverF + Counts_II(iE, iL) * dP * dLagr
                 ! Multiple by (B/dS) to convert from F -> f
                 Counts_II(iE, iL) = Counts_II(iE, iL) / dSOverB
+            
             end do
         end do 
-
         ! renormalize such that the integral over phase space is conserved
-        Counts_II = Counts_II * IntegralOverfInj / IntegralOverF
+        Counts_II = Counts_II * IntegralOverfInj / &
+                    (IntegralOverF + IntegralOverF_Boundary)
 
-    end subroutine
+    end subroutine calculate_distribution_function
+!============================================================================
+    subroutine calculate_flux(Time)
+        use PT_ModUnit, only: kinetic_energy_to_momentum
+        real, intent(in) :: Time
+
+        real :: m2cm = 100.0 ! meters -> cm
+        real :: j2MeV =  6.242e12 ! joules -> MeV
+        real :: AvgEnergy, AvgMomentum
+        integer :: iP 
+
+        ! Updates Counts_II = f
+        call calculate_distribution_function(Time)
+
+        ! Convert j = f*p^2 + conversion s.t. j = [pfu / MeV]
+        do iP = 1, nEnergyBins
+            AvgEnergy = 0.5 * (EnergyBin_I(iP+1) + EnergyBin_I(iP))
+            AvgMomentum = kinetic_energy_to_momentum(AvgEnergy)
+            Counts_II(iP, :) = Counts_II(iP, :) * AvgMomentum**2.0 / &
+                               (m2cm**2.0 * j2MeV)
+        end do
+
+    end subroutine calculate_flux
+!============================================================================
+    ! subroutine calculate_integral_flux(Location, MinEnergy, IntFlux)
+    !     real, intent(in) :: MinEnergy, Location
+    !     real, intent(out) :: IntFlux
+
+
+
+    ! end subroutine calculate_integral_flux
 !============================================================================
 end module PT_ModDistribution
