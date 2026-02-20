@@ -109,7 +109,8 @@ contains
         
         ! Equation 124 of Sokolov et al., 2023 "High resolution finite...".
         ! Integrate injection distribution function over phase space.
-        ! Integration over momentum is only over inj momentum bin.
+        ! Integration over momentum occurs over energy range:
+        !       [InjEnergy, InjEnergy + 1]
         ! dSl assumed to be 1. 
         ! Factor of 4pi*Psi does not need to be 
         !   included as it will cancel during normalization.
@@ -120,7 +121,7 @@ contains
         use PT_ModUnit, only: kinetic_energy_to_momentum
         real, intent(in) :: Time, LagrInject
 
-        real :: pInj, fPinj, p1, p2, dP 
+        real :: pInj1, pInj2, fPinj
         real :: dSOverB, ThermalEnergy
 
         ! this is kb*rho*T
@@ -128,17 +129,16 @@ contains
         call calc_dSOverB(Time, LagrInject, dSOverB)
         
         ! Inject particles with p**-5 distribution commonly seen in 
-        ! suprathermal tail
-        pInj = kinetic_energy_to_momentum(InjEnergy)
-        fPinj = InjCoeff * ThermalEnergy / (cPi * pInj**5.0)
-        ! call save_finject(Time, LagrInject, fPinj)
+        ! suprathermal tail.
+        ! Assume this injection takes place from InjEnergy -> InjEnergy + 1 keV
+        pInj1 = kinetic_energy_to_momentum(InjEnergy)
+        pInj2 = kinetic_energy_to_momentum(InjEnergy + ckeV)
 
-        ! Momentum bin
-        ! p1 = kinetic_energy_to_momentum(EnergyBin_I(InjEnergyIndex))
-        ! p2 = kinetic_energy_to_momentum(EnergyBin_I(InjEnergyIndex+1))
-        ! dP = (p2**3.0 - p1**3.0) / 3.0
-        dP = PcubedBin_I(InjEnergyIndex+1) - PcubedBin_I(InjEnergyIndex)
-        IntegralOverfInj = IntegralOverfInj + fPinj * dP * dSOverB
+        ! Definite integral of finj p^-5 d(p^3/3) from p1 to p2
+        fPinj = -0.5 * InjCoeff * ThermalEnergy / cPi * &
+                (pInj2**(-2.0) - pInj1**(-2.0))
+
+        IntegralOverfInj = IntegralOverfInj + fPinj * dSOverB
 
     end subroutine update_integral_over_finj
 !============================================================================
