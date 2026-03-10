@@ -7,7 +7,7 @@ module PT_ModReadMhData
 
   use PT_ModGrid,    ONLY: iblock_to_lon_lat, get_other_state_var,   &
        nMHData, nLine, Z_, Used_B, FootPoint_VB, nVertex_B, MHData_VIB, &
-       LagrID_, MinLagr, MaxLagr
+       LagrID_, MinLagr, MaxLagr, MinLagrOld, MaxLagrOld
   use PT_ModTime,    ONLY: PTTime, DataInputTime
   use ModPlotFile,   ONLY: read_plot_file
   use ModUtilities,  ONLY: fix_dir_name, open_file, close_file, CON_stop
@@ -36,7 +36,7 @@ module PT_ModReadMhData
 
   ! IO unit for file with list of tags
   integer :: iIOTag
-  integer :: iLonFile = 0, iLatFile = 0
+  integer :: iLonFile, iLatFile
 
 contains
    !============================================================================
@@ -58,7 +58,6 @@ contains
          ! the input directory
          call read_var('NameInputDir', NameInputDir)
          call fix_dir_name(NameInputDir) ! adds "/" if not present
-
          call read_var('iLonFile', iLonFile)
          call read_var('iLatFile', iLatFile)
       case('#MHDATA')
@@ -96,35 +95,35 @@ contains
       iIOTag = io_unit_new()
       call open_file(iUnitIn=iIOTag, &
          file=trim(NameInputDir)//trim(NameTagFile), status='old')
-      ! if nTag > 0, need to skip nTag lines
-      ! if(nTag>0)then
-      !   do iTag = 1, nTag-1
-      !      read(iIOTag,'(a)') StringAux
-      !   end do
-      ! end if
-
+   
       ! read the first input file
       call read_mh_data(DoOffsetIn = .false.)
       call get_other_state_var
+
       PTTime = DataInputTime
 
    end subroutine init
   !============================================================================
   subroutine finalize
 
-    ! close currentl opend files
+    ! close currently opened files
     !--------------------------------------------------------------------------
     if(DoReadMhData) call close_file(iUnitIn=iIOTag)
   end subroutine finalize
   !============================================================================
   subroutine read_mh_data(DoOffsetIn)
-
-   ! use SP_ModPlot,    ONLY: NameMHData
+   
+   use PT_ModProc, only: iProc
+   
    character(len=*), parameter :: NameMHData = "MH_data"
    logical, optional, intent(in ):: DoOffsetIn
-   ! read 1D MH data, which are produced by write_mh_1d n ModWrite
+
+   ! read 1D MH data, which are produced by MFLAMPA in
+   ! write_mh_1d n ModWrite
+   
    ! separate file is read for each field line, name format is
    ! (usually)MH_data_<iLon>_<iLat>_t<ddhhmmss>_n<iIter>.{out/dat}
+   
    ! name of the input file
    character(len=100):: NameFile
    ! loop variables
@@ -167,8 +166,8 @@ contains
    ! For Feb 2026 Artemis real-time demonstration
    ! Continually check that .lst file is updated and wait until it is
    ! Terminate if .lst is not updated after 2 minutes
-   TimeToWait = 3   ! seconds
-   TimeToQuit = 120 ! seconds
+   TimeToWait = 1   ! seconds
+   TimeToQuit = 600 ! seconds
    do 
       read(iIOtag, '(a)', iostat = ioStat) StringTag
       ! sometimes the file returns empty string and the next read is successful
@@ -178,13 +177,15 @@ contains
          backspace(iIOTag)
          SleepCounter = SleepCounter + TimeToWait
          call sleep(TimeToWait)
-         if(SleepCounter.gt.TimeToQuit) &
+         if(SleepCounter.gt.TimeToQuit.and.iProc.eq.0) &
             call CON_Stop(NameSub//': .lst file not updated for 120 seconds.')
          cycle
-      else if(ioStat.gt.0) then
+      else if(ioStat.gt.0.and.iProc.eq.0) then
          call CON_Stop(NameSub//': error reading .lst file.')
       else
          ! print *, 'Successful: ', StringTag
+         ! Reset sleep counter for next file read
+         SleepCounter = 0
          exit
       end if
 
@@ -204,7 +205,6 @@ contains
       end if
       
       call iblock_to_lon_lat(iLine, iLon, iLat)
-
       ! set the file name
       write(NameFile,'(a,i3.3,a,i3.3,a)') &
          trim(NameInputDir)//NameMHData//'_',iLonFile,&
@@ -256,6 +256,8 @@ contains
       
       ! sometimes negative lagr coords appear
       ! ignoring those for now - consult igor
+   
+      startIndex = 1
       do while(MhData_VIB(LagrID_, startIndex, iLine).lt.1)
          startIndex = startIndex + 1
       end do
@@ -264,9 +266,10 @@ contains
       MaxLagr(iLine) = MhData_VIB(LagrID_, nVertex_B(iLine), iLine)
       MHData_VIB(:, MinLagr(iLine):MaxLagr(iLine), iLine) = &
          MHData_VIB(:, startIndex:nVertex_B(iLine), iLine)
-
+      
       ! zero out lagr coord with no data
-      MHData_VIB(:, 1:MinLagr(iLine)-1, iLine) = 0.0
+      if(MinLagr(iLine).gt.1) &
+         MHData_VIB(:, 1:MinLagr(iLine)-1, iLine) = 0.0
 
     end do line
 

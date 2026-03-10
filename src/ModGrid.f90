@@ -101,9 +101,6 @@ module PT_ModGrid
    ! 3rd index - local line number
    real, public, pointer     :: State_VIB(:,:,:)
 
-   ! Boundary conditions for SDE - move to mod particle or create mod_bc
-   real, public :: Rmax, Rmin
-
    ! Number of variables in the state vector and the identifications
    integer, public, parameter :: nMhData = 13, nVar = 27, &
          !
@@ -201,9 +198,6 @@ contains
          call read_var('nLat',  nLat)
          call read_var('nLon',  nLon)
          nLineAll = nLat * nLon
-      case('#BOUNDARY')
-         call read_var('Rmin', Rmin)
-         call read_var('Rmax', Rmax)
 
       case default
          call CON_stop(NameSub//' Unknown command '//NameCommand)
@@ -241,7 +235,7 @@ contains
             ! Some work/trial has been done, but just partially. One can refer
             ! to the code version (915'th commit) on August 22, 2024.
             iLineAll0 = nLineAll-1
-            write(*,*) "Here we keep iProc's >", nLineAll, 'on the last line.'
+            ! write(*,*) "Here we keep iProc's >", nLineAll, 'on the last line.'
          end if
       end if
 
@@ -375,7 +369,7 @@ contains
             ! Velocity vector along fieldline
             State_VIB(U_,iVertex,iLine) = sum(MhData_VIB(Ux_:Uz_,iVertex,iLine) * &
                      MHData_VIB(Bx_:Bz_,iVertex,iLine)) / State_VIB(B_,iVertex,iLine)
-            
+                     
             ! distance between lagrangian points
             if(iVertex /= MaxLagr(iLine))then
                State_VIB(D_, iVertex, iLine) = norm2(&
