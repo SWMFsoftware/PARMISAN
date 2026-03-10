@@ -222,7 +222,7 @@ contains
    !============================================================================
    subroutine advance_particles(iLine, TimeLimit, BinTime)
 
-      use PT_ModDistribution, only: bin_particle, TimeWindow, bin_particle_boundary
+      use PT_ModDistribution, only: bin_particle, TimeWindow
       use PT_ModFieldline,    only: check_boundary_conditions
       use PT_ModUnit,         only: momentum_to_kinetic_energy
 
@@ -257,11 +257,9 @@ contains
 
             if(IsOutside) then
                ! Remove particle from simulation.
-               ! First, add particle weight to boundary counts.
-               ! Second, shift all particles down one index -
+               ! Shift all particles down one index -
                ! subtract one from iParticle so that shifted particle is not skipped in loop
-               call bin_particle_boundary(Particle_IV(iParticle, Momentum_), &
-                                          Particle_IV(iParticle, Weight_))
+
                call remove_particle_from_sim(iParticle, iLine)
                iParticle = iParticle - 1
                exit TIME

@@ -17,6 +17,7 @@ module PT_ModPlot
   character(len=*), parameter :: LagrBinFile = 'lagr_bin.dat'
   character(len=*), parameter :: RFile = 'R_bin.dat'
   character(len=*), parameter :: ShockLocFile = 'shock_loc.dat'
+  character(len=*), parameter :: EarthFile = 'intflux_earth.dat'
   
 contains
   !============================================================================
@@ -55,40 +56,42 @@ contains
     ! Create shock location file and record shock at surface at t = 0
     call touch_file(OutputDir//ShockLocFile)
 
+    ! Create file that will hold integral fluxes at Earth
+    call touch_file(OutputDir//EarthFile)
+
   end subroutine init
   !============================================================================
   subroutine save_plot_all(Iter, Time)
     use PT_ModDistribution, only: Counts_II, nEnergyBins, nLagrBins, TotalWeight, &
-                                  calculate_flux, Counts_Outside_I
+                                  calculate_flux
     use ModMpi, ONLY: MPI_reduce_real_array, MPI_SUM, MPI_reduce_real_scalar
+    
     real, intent(in) :: Time
     integer, intent(in) :: Iter
     integer :: iTime, iLagr
-    character(len = 50) :: outputFile
+    real :: Flux_II(nEnergyBins, nLagrBins)
 
-    ! dummy variables during integration since they do not reset
+    ! dummy variables during integration
+    ! TotalWeight and CountsOutsideProc need to be tracked throughout the simulation
     real :: TotalWeightProc
-    real, allocatable :: CountsOutsideProc(:)
 
-    ! Save fluxes stored at different radial distances
-    !--------------------------------------------------------------------------
-    ! placeholder for original total weight - need to reset after summing over all processors
 
+    ! placeholders - need to reset to original valueafter summing over all processors
     TotalWeightProc = TotalWeight
-    allocate(CountsOutsideProc(1:nEnergyBins))
-    CountsOutsideProc = Counts_Outside_I
 
+    ! Sum over all processors
     call MPI_reduce_real_array(Counts_II, nEnergyBins*nLagrBins, MPI_SUM, 0, &
           iComm, iError)
-    call MPI_reduce_real_array(Counts_Outside_I, nEnergyBins, MPI_SUM, 0, iComm, iError)
     call MPI_reduce_real_scalar(TotalWeight, MPI_SUM, 0, iComm, iError)
 
+    ! Only one processor saves data. Reset counts for the next integration timestep
     if(iProc/=0) then
       ! Reset Counts for next timestep
       Counts_II = 0.0
     else
-      ! Convert counts to distribution function - variable name does not change
-      call calculate_flux(Time)
+
+      ! Convert counts to flux
+      call calculate_flux(Time, Flux_II)
 
       ! append time of output to time file
       open(901, file=OutputDir//TimeFile, position="append", action="write")
@@ -98,26 +101,70 @@ contains
       ! save updated positions of lagr coord bins
       call save_position_bins(Time)
 
-      ! create output distribution function file name
-      write(outputFile, '(A15, I0)') 'flux_time_', int(Time)
-      outputFile = adjustl(outputFile)
+      ! Save flux along the entire fieldline
+      call save_flux(Time, Flux_II)
 
-      ! output distribution function (nEnergy x nLagrCoord)
-      open(902, file=OutputDir//trim(outputFile), status='unknown', action="READWRITE")
-      do iLagr = 1, nLagrBins
-        write(902,'(4000e15.6)') Counts_II(:, iLagr) 
-      end do
-      close(902)
+      ! Save flux at location of earth
+      call save_integral_flux_earth(Time, Flux_II)
 
       ! Reset Counts for next timestep
       Counts_II = 0.0
       ! Reset total weight of processor to original value
       TotalWeight = TotalWeightProc
-      Counts_Outside_I = CountsOutsideProc
-      deallocate(CountsOutsideProc)
+
     end if
 
   end subroutine save_plot_all
+  !============================================================================
+  subroutine save_flux(Time,Flux_II)
+    use PT_ModDistribution, only: nLagrBins
+
+    real, intent(in) :: Time, Flux_II(:,:)
+    character(len = 50) :: outputFile
+    integer :: iLagr
+    ! create output distribution function file name
+    write(outputFile, '(A15, I0)') 'flux_time_', int(Time)
+    outputFile = adjustl(outputFile)
+
+    ! output flux (nEnergy x nLagrCoord)
+    open(902, file=OutputDir//trim(outputFile), status='unknown', action="READWRITE")
+    do iLagr = 1, nLagrBins
+      write(902,'(4000e15.6)') Flux_II(:, iLagr) 
+    end do
+    close(902)
+
+  end subroutine save_flux
+  !============================================================================
+  subroutine save_integral_flux_earth(Time, Flux_II)
+    use PT_ModDistribution, only: LagrBin_I, nLagrBins, calculate_integral_flux
+    use PT_ModFieldline, only: get_particle_location
+    
+    real, intent(in) :: Time, Flux_II(:,:)
+    
+    ! TODO: Add channels to PARAM
+    real :: RBins_I(nLagrBins+1)
+    real :: EnergyChannels(6) = (/1.0, 10.0, 30.0, 50.0, 100.0, 500.0/) * ckeV
+    integer :: iBin, iR, nChannel = 6, iChannel
+    real :: IntFluxChannels(6) = 0.0
+    real :: EarthLoc = 215.0
+    
+    do iBin = 1, nLagrBins+1
+      call get_particle_location(Time, LagrBin_I(iBin), RBins_I(iBin))
+    end do
+
+    ! Index of spatial bin containing Earth's location
+    iR = minloc(EarthLoc - RBins_I, mask = (EarthLoc - RBins_I >= 0), dim = 1)
+
+    do iChannel = 1, nChannel
+      call calculate_integral_flux(Flux_II(:, iR), EnergyChannels(iChannel), IntFluxChannels(iChannel))
+    end do
+    
+    ! TODO: Fix format after adding channels to PARAM
+    open(911, file=OutputDir//EarthFile, position="append", action="write")
+      write(911, '(7e15.6)') Time, IntFluxChannels
+    close(911)
+
+  end subroutine save_integral_flux_earth
   !============================================================================
   subroutine save_shock_location
 
@@ -160,28 +207,25 @@ contains
   !============================================================================
   subroutine save_distribution_function(Iter, Time)
     use PT_ModDistribution, only: Counts_II, nEnergyBins, nLagrBins, TotalWeight, &
-                                  calculate_distribution_function, Counts_Outside_I
+                                  calculate_distribution_function
     use ModMpi, ONLY: MPI_reduce_real_array, MPI_SUM, MPI_reduce_real_scalar
     real, intent(in) :: Time
     integer, intent(in) :: Iter
     integer :: iTime, iLagr
     character(len = 50) :: outputFile
-
+    real :: DistFunc_II(nEnergyBins, nLagrBins)
     ! dummy variables during integration since they do not reset
     real :: TotalWeightProc
-    real, allocatable :: CountsOutsideProc(:)
+
 
     ! Save fluxes stored at different radial distances
     !--------------------------------------------------------------------------
     ! placeholder for original total weight - need to reset after summing over all processors
     
     TotalWeightProc = TotalWeight
-    allocate(CountsOutsideProc(1:nEnergyBins))
-    CountsOutsideProc = Counts_Outside_I
-    
+
     call MPI_reduce_real_array(Counts_II, nEnergyBins*nLagrBins, MPI_SUM, 0, &
          iComm, iError)
-    call MPI_reduce_real_array(Counts_Outside_I, nEnergyBins, MPI_SUM, 0, iComm, iError)
     call MPI_reduce_real_scalar(TotalWeight, MPI_SUM, 0, iComm, iError)
 
     if(iProc/=0) then
@@ -189,7 +233,7 @@ contains
       Counts_II = 0.0
     else
       ! Convert counts to distribution function - variable name does not change
-      call calculate_distribution_function(Time)
+      call calculate_distribution_function(Time, DistFunc_II)
 
       ! append time of output to time file
       open(901, file=OutputDir//TimeFile, position="append", action="write")
@@ -204,7 +248,7 @@ contains
       ! output distribution function (nEnergy x nLagrCoord)
       open(902, file=OutputDir//trim(outputFile), status='unknown', action="READWRITE")
       do iLagr = 1, nLagrBins
-        write(902,'(4000e15.6)') Counts_II(:, iLagr) 
+        write(902,'(4000e15.6)') DistFunc_II(:, iLagr) 
       end do
       close(902)
 
@@ -212,8 +256,6 @@ contains
       Counts_II = 0.0
       ! Reset total weight of processor to original value
       TotalWeight = TotalWeightProc
-      Counts_Outside_I = CountsOutsideProc
-      deallocate(CountsOutsideProc)
     end if
 
   end subroutine save_distribution_function

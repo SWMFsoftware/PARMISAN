@@ -16,7 +16,6 @@ module PT_ModDistribution
     real :: TimeWindow, TotalWeight, InjEnergy, InjPcubed, InjCoeff 
     ! Array for storing the counts
     real, allocatable :: Counts_II(:,:)
-    real, allocatable :: Counts_Outside_I(:)
     ! Bins
     real, allocatable :: EnergyBin_I(:), PcubedBin_I(:), LagrBin_I(:)
     ! How many total injected real protons 
@@ -62,7 +61,6 @@ contains
 
         ! allocate bin and solution arrays
         allocate(Counts_II(nEnergyBins, nLagrBins)); Counts_II = 0.0
-        allocate(Counts_Outside_I(nEnergyBins));     Counts_Outside_I = 0.0
         allocate(EnergyBin_I(nEnergyBins+1))
         allocate(PcubedBin_I(nEnergyBins+1))
         allocate(LagrBin_I(nLagrBins+1))
@@ -165,22 +163,7 @@ contains
 
     end subroutine bin_particle
 !============================================================================
-    subroutine bin_particle_boundary(Momentum, Weight)
-        ! Bin particle outside boundaries in momentum.
-        ! Since lagrangian bins are uniform: inner and outer boundaries
-        !   can be combined
-        ! This is to integrate over and add to simulation integral for 
-        !   correct normalization.
-        real, intent(in) :: Momentum, Weight
-        integer :: iE
-
-        iE = minloc(Momentum - PcubedBin_I, mask = (Momentum - PcubedBin_I > 0), dim = 1)
-        iE = max(iE, 1)
-        Counts_Outside_I(iE) = Counts_Outside_I(iE) + Weight
-
-    end subroutine bin_particle_boundary
-!============================================================================
-    subroutine calculate_distribution_function(Time)
+    subroutine calculate_distribution_function(Time, DistFunc_II)
         ! Conversion of SDE solution --> PDE solution (F = dS/B * f)
         ! PDF of SDE trajectories in phase space = solution of FP equation
         ! PDF of SDE = P(traj in bin) divided by phase space bin volume
@@ -193,12 +176,10 @@ contains
         use PT_ModUnit, only: kinetic_energy_to_momentum
 
         real, intent(in) :: Time
+        real, intent(out) :: DistFunc_II(nEnergyBins, nLagrBins)
         real :: dP, dLagr, p1, p2
-        real :: BinVolume, IntegralOverF, dSOverB, IntegralOverF_Boundary
+        real :: BinVolume, dSOverB
         integer :: iE, iL
-
-        IntegralOverF = 0.0
-        IntegralOverF_Boundary = sum(Counts_Outside_I) / TotalWeight
 
         do iL = 1, nLagrBins
             dLagr = LagrBin_I(iL+1) - LagrBin_I(iL)
@@ -210,50 +191,53 @@ contains
                 dP = PcubedBin_I(iE+1) - PcubedBin_I(iE)
                 BinVolume = dLagr * dP
                 ! probability / phase space bin volume
-                Counts_II(iE, iL) = Counts_II(iE, iL) / &
-                                    (BinVolume * TotalWeight)
+                DistFunc_II(iE, iL) = Counts_II(iE, iL) / &
+                                      (BinVolume * TotalWeight)
 
-                ! integrate over bin and add to total integral
-                IntegralOverF = IntegralOverF + Counts_II(iE, iL) * dP * dLagr
                 ! Multiple by (B/dS) to convert from F -> f
-                Counts_II(iE, iL) = Counts_II(iE, iL) / dSOverB
+                DistFunc_II(iE, iL) = DistFunc_II(iE, iL) / dSOverB
             
             end do
         end do 
+
         ! renormalize such that the integral over phase space is conserved
-        Counts_II = Counts_II * IntegralOverfInj / &
-                    (IntegralOverF + IntegralOverF_Boundary)
+        DistFunc_II = DistFunc_II * IntegralOverfInj 
 
     end subroutine calculate_distribution_function
 !============================================================================
-    subroutine calculate_flux(Time)
+    subroutine calculate_flux(Time, Flux_II)
         use PT_ModUnit, only: kinetic_energy_to_momentum
         real, intent(in) :: Time
+        real, intent(out) :: Flux_II(nEnergyBins, nLagrBins)
 
         real :: m2cm = 100.0 ! meters -> cm
         real :: j2MeV =  6.242e12 ! joules -> MeV
         real :: AvgEnergy, AvgMomentum
+        real :: DistFunc_II(nEnergyBins, nLagrBins)
+
         integer :: iP 
 
         ! Updates Counts_II = f
-        call calculate_distribution_function(Time)
+        call calculate_distribution_function(Time, DistFunc_II)
 
         ! Convert j = f*p^2 + conversion s.t. j = [pfu / MeV]
         do iP = 1, nEnergyBins
             AvgEnergy = 0.5 * (EnergyBin_I(iP+1) + EnergyBin_I(iP))
             AvgMomentum = kinetic_energy_to_momentum(AvgEnergy)
-            Counts_II(iP, :) = Counts_II(iP, :) * AvgMomentum**2.0 / &
-                               (m2cm**2.0 * j2MeV)
+            Flux_II(iP, :) = DistFunc_II(iP, :) * AvgMomentum**2.0 / &
+                             (m2cm**2.0 * j2MeV)
         end do
 
     end subroutine calculate_flux
 !============================================================================
-    ! subroutine calculate_integral_flux(Location, MinEnergy, IntFlux)
-    !     real, intent(in) :: MinEnergy, Location
-    !     real, intent(out) :: IntFlux
+    subroutine calculate_integral_flux(Spectra, MinEnergy, IntFlux)
+        real, intent(in) :: Spectra(:), MinEnergy
+        real, intent(out) :: IntFlux
+        real :: dE(nEnergyBins)
 
+        dE = EnergyBin_I(2:nEnergyBins+1) - EnergyBin_I(1:nEnergyBins)
+        IntFlux = sum(Spectra * dE / cMeV, mask = (EnergyBin_I > MinEnergy))
 
-
-    ! end subroutine calculate_integral_flux
+    end subroutine calculate_integral_flux
 !============================================================================
 end module PT_ModDistribution
