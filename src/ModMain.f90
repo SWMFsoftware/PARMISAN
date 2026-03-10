@@ -36,6 +36,7 @@ module PT_ModMain
   public:: read_param, initialize, finalize, run, check, DoRestart,          &
        IsLastRead, UseStopFile, CpuTimeMax, TimeMax, nIterMax, IsStandAlone, &
        DoRunTest
+       
 contains
    !============================================================================
    subroutine read_param
@@ -77,7 +78,7 @@ contains
             if(IsStandAlone) CYCLE
             call read_param_origin
          case('#COORDSYSTEM', '#COORDINATESYSTEM', '#TESTPOS', &
-               '#CHECKGRIDSIZE', '#GRIDNODE', "#BOUNDARY")
+               '#CHECKGRIDSIZE', '#GRIDNODE')
             ! Currently we do not need '#DOSMOOTH'
             if(i_session_read() /= 1) CYCLE
             call read_param_grid(NameCommand)
@@ -131,7 +132,7 @@ contains
             call read_param_random(NameCommand)
          case("#SDE")
             call read_param_solver(NameCommand)
-         case("#DIFFUSION")
+         case("#DIFFUSION", "#BOUNDARY", "#ADVECTION")
             call read_param_fieldline(NameCommand)
          case default
             call CON_stop(NameSub//': Unknown command '//NameCommand)
