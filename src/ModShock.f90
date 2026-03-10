@@ -229,8 +229,7 @@ contains
                iEnd = MaxLagr(iLine)
                
                iShockMin = iShock_IB(ShockOld_, iLine)
-               
-               ! iShockMax = iShockMax = iEnd - nShockMargin - 1
+
                iShockMax = iEnd - 1
  
                ! get the forward grid index for iShockCandidate
@@ -260,7 +259,7 @@ contains
                     ! Determine downstream extent of shock
                     i = 0
                     do while(dLogRho_II(iShockCandidate - i, iLine).gt.dLogRhoThreshold.and. &
-                            (iShockCandidate-i).gt.1.and.i.le.nSearchMax) 
+                            (iShockCandidate-i).gt.MinLagr(iLine).and.i.le.nSearchMax) 
                          i = i + 1
                     end do
                     iShock_IB(ShockDown_, iLine) = iShockCandidate - i   
@@ -270,118 +269,13 @@ contains
                     iShock_IB(ShockUp_, iLine) = iShock_IB(ShockUpOld_, iLine)
                     iShock_IB(ShockDown_, iLine) = iShock_IB(ShockDownOld_, iLine)
                end if
-
+              
                ! check_line_ishock: update Used_B(iLine)
                call check_line_ishock(iLine)
                if(.not.Used_B(iLine)) CYCLE
-               ! calculate values only when we save states for the shock
-               if(DoSaveStateShock) then
-                    ! get the coordinates
-                    StateShock_VIB(XShock_:ZShock_, iLine) = &
-                         MHData_VIB(X_:Z_, iShockCandidate, iLine)
-                    call xyz_to_rlonlat(StateShock_VIB(XShock_:ZShock_, iLine), &
-                         StateShock_VIB(RShock_, iLine), &
-                         StateShock_VIB(LonShock_, iLine), &
-                         StateShock_VIB(LatShock_, iLine))
-                    if(StateShock_VIB(RShock_, iLine) == 0.0) then
-                         write(*,*) "On the field line, iLineAll=", iLineAll0+iLine
-                         call CON_Stop(NameSub//": Error of the shock location (R=0.0).")
-                    end if
-
-                    ! convert units for angles
-                    StateShock_VIB([LonShock_,LatShock_], iLine) = &
-                         StateShock_VIB([LonShock_,LatShock_], iLine) * cRadToDeg
-                    ! get MHD VARs
-                    StateShock_VIB(RhoShock_:Wave2Shock_, iLine) = &
-                         MHData_VIB(Rho_:Wave2_, iShockCandidate, iLine)
-                    ! also get compression ratio at shock surface
-                    StateShock_VIB(CompRatio_, iLine) = &
-                         maxval(MHData_VIB(Rho_, &
-                         iShockCandidate-nShockWidth+1:iShockCandidate+1, iLine), &
-                         MASK=dLogRho_II(iShockCandidate-nShockWidth+1: &
-                         iShockCandidate+1, iLine) > dLogRhoThreshold)/ & ! post shock
-                         minval(MHData_VIB(Rho_, iShockCandidate+1: &
-                         iShockCandidate+nShockWidth, iLine), &
-                         MASK=dLogRho_II(iShockCandidate+1:iShockCandidate+nShockWidth, &
-                         iLine) > dLogRhoThreshold .and. &
-                         MHData_VIB(Rho_, iShockCandidate+1: &
-                         iShockCandidate+nShockWidth, iLine) > 0.0)        ! pre shock
-               end if
           end do
 
      end subroutine get_shock_location
-     !============================================================================
-     ! subroutine steepen_shock(iLine, nX, iShock, BSi_I, dLogRhoIn_I)
-
-     !      ! change the density profile near the shock front
-     !      ! so it becomes steeper for the current line
-     !      use PT_ModConst,   ONLY: cTiny, cRsun
-     !      use PT_ModGrid, ONLY: D_
-
-     !      ! INPUTs
-     !      integer, intent(in) :: iLine, iShock ! Indices of line and shock front
-     !      integer, intent(in) :: nX            ! Number of meshes along s_L axis
-     !      real, intent(inout) :: BSi_I(nX)     ! Magnetic field strength
-     !      real, optional, intent(inout) :: dLogRhoIn_I(nX) ! for time-accurate run
-     !      ! Local VARs
-     !      real :: DsSi_I(1:nX-1), dLogRho_I(nX)
-     !      real :: dLogRhoExcess_I(iShock-nShockWidth:iShock+nShockWidth-1)
-     !      real :: dLogRhoExcessSum
-     !      !--------------------------------------------------------------------------
-     !      DsSi_I(1:nX-1) = State_VIB(D_, 1:nX-1, iLine)*cRsun
-          
-     !      ! get dLogRho_I if given; otherwise = -divU
-     !      if(present(dLogRhoIn_I)) then
-     !           dLogRho_I = dLogRhoIn_I
-     !      else
-     !           ! steady state: we do not have dlogrho/dt since dt=0 so we keep divU
-     !           dLogRho_I = -divU_II(1:nX, iLine)
-     !      end if
-
-     !      ! find the excess of dLogRho within the shock compared
-     !      ! to background averaged over length
-     !      dLogRhoExcess_I = max(0.5*( &
-     !           dLogRho_I(iShock-nShockWidth:iShock+nShockWidth-1) + &
-     !           dLogRho_I(iShock-nShockWidth+1:iShock+nShockWidth)) - &
-     !           dLogRhoThreshold, 0.0)
-
-     !      ! a jump (dLogRhoExcess>0) in velocity accross the shock wave * \Delta t
-     !      dLogRhoExcessSum = sum(dLogRhoExcess_I* &
-     !           DsSi_I(iShock-nShockWidth:iShock+nShockWidth-1))
-
-     !      ! check for zero excess
-     !      !if(abs(dLogRhoExcessSum) <= cTiny) RETURN
-          
-     !      ! nullify excess within the smoothed shock
-     !      dLogRho_I(iShock-nShockWidth:iShock+nShockWidth) = min( &
-     !           dLogRhoThreshold, dLogRho_I(iShock-nShockWidth:iShock+nShockWidth))
-          
-     !      ! ... and concentrate it at the shock front, applying the whole jump
-     !      ! in the velocity at a single grid point
-     !      dLogRho_I(iShock) = dLogRhoThreshold + &
-     !           dLogRhoExcessSum/DsSi_I(iShock)
-     !      ! dLogRho_I(iShock-nShockWidth:iShock+nShockWidth) = dLogRho_I(iShock-nShockWidth:iShock+nShockWidth)
-     !      ! dLogRho_I(iShock-nShockWidth:iShock+nShockWidth) = dLogRhoThreshold + &
-     !      !      dLogRhoExcessSum/DsSi_I(iShock-nShockWidth:iShock+nShockWidth)
-          
-     !      ! also, sharpen the magnetic field magnitude
-     !      ! post shock part
-     !      BSi_I(iShock-nShockWidth+1:iShock+1) = &
-     !           maxval(BSi_I(iShock+1-nShockWidth:iShock+1))
-     !      ! pre shock part
-     !      BSi_I(iShock+1:iShock+nShockWidth  ) = &
-     !           minval(BSi_I(iShock+1:iShock+nShockWidth))
-
-     !      ! update dLogRhoIn (if given) and divU
-     !      if(present(dLogRhoIn_I)) then
-     !           dLogRhoIn_I = dLogRho_I
-     !           divU_II(1:nX, iLine) = -dLogRhoIn_I
-     !      else
-     !           ! steady state: we do not have dlogrho/dt since dt=0 so we keep dLogRho
-     !           divU_II(1:nX, iLine) = -dLogRho_I
-     !      end if
-
-     ! end subroutine steepen_shock
      !============================================================================
      subroutine set_initial_shock
           use PT_ModGrid, only: U_, D_
@@ -406,14 +300,14 @@ contains
                do while(divU(iShock + i).lt.-dLogRhoThreshold.and.(iShock+i).lt.iEnd.and.i.le.nSearchMax)
                     i = i + 1
                end do
-               iShock_IB(ShockUp_, iLine) = iShock + 1
+               iShock_IB(ShockUp_, iLine) = iShock + i
                
                i = 0
                do while(divU(iShock - i).lt.-dLogRhoThreshold.and.(iShock-i).gt.MinLagr(iLine).and.i.le.nSearchMax) 
                     i = i + 1
                end do
                iShock_IB(ShockDown_, iLine) = iShock - i   
-               write(*,*) 'INITIAL: ', iShock, iShock_IB(ShockUp_, iLine), iShock_IB(ShockDown_, iLine)
+               !write(*,*) 'INITIAL: ', iShock_IB(ShockDown_, iLine), iShock, iShock_IB(ShockUp_, iLine)
 
           end do
 
