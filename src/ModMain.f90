@@ -199,7 +199,7 @@ contains
 
       use PT_ModGrid,          ONLY: get_other_state_var, copy_old_state, Used_B
       use PT_ModShock,         ONLY: get_shock_location, get_dLogRho, &
-                                     DoTraceShock, set_initial_shock
+                                     DoTraceShock, get_test_shock
       use PT_ModReadMhData,    ONLY: read_mh_data
       use PT_ModTime,          ONLY: PTTime, DataInputTime, iIter
       use PT_ModAdvance,       ONLY: advance
@@ -219,7 +219,7 @@ contains
          if(.not.DoReadMhData) call get_other_state_var
          
          if(DoRunTest) then 
-            call set_initial_shock
+            call get_test_shock
             call save_analytic_solution
          end if
          IsFirstCall = .false.
@@ -244,7 +244,11 @@ contains
       
       if(DoTraceShock) then
          call get_dLogRho
-         call get_shock_location
+         if(DoRunTest) then
+            call get_test_shock
+         else
+            call get_shock_location
+         end if
          call save_shock_location
       end if
 

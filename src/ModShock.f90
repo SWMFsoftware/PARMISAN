@@ -25,7 +25,7 @@ module PT_ModShock
   public:: get_dLogRho          ! calculate temporal change in density 
   public:: get_shock_location   ! finds shock location on all lines
 !   public:: steepen_shock        ! steepen the density profile at the shock
-  public:: set_initial_shock
+  public:: get_test_shock
 
   ! If the shock wave is traced, the advance algorithms are modified
   logical, public :: DoTraceShock = .true.
@@ -277,7 +277,7 @@ contains
 
      end subroutine get_shock_location
      !============================================================================
-     subroutine set_initial_shock
+     subroutine get_test_shock
           use PT_ModGrid, only: U_, D_
 
           integer :: iLine, iEnd, i, iShock
@@ -294,8 +294,10 @@ contains
                                               State_VIB(D_, MinLagr(iLine):iEnd-1, iLine)
 
                iShock = minloc(divU(MinLagr(iLine):iEnd-1), DIM = 1) + MinLagr(iLine) - 1
-               iShock_IB(Shock_, iLine) = iShock
-              
+               ! slighly dubious here, calculating divU in this manner for the first timestep isn't perfect
+               ! location of shock is actually one lagr coordinate ahead - this needs to be fixed
+               iShock_IB(Shock_, iLine) = iShock + 1
+
                i = 0
                do while(divU(iShock + i).lt.-dLogRhoThreshold.and.(iShock+i).lt.iEnd.and.i.le.nSearchMax)
                     i = i + 1
@@ -311,6 +313,6 @@ contains
 
           end do
 
-     end subroutine set_initial_shock
+     end subroutine get_test_shock
      !============================================================================
 end module PT_ModShock
