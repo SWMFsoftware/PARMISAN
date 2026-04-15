@@ -50,6 +50,7 @@ contains
       use PT_ModSolver,        ONLY: read_param_solver     => read_param
       use PT_ModShock,         ONLY: read_param_shock      => read_param
       use PT_ModFieldline,     ONLY: read_param_fieldline
+      use PT_ModPlot,          ONLY: read_param_plot       => read_param
 
       ! Read input parameters for PT component
       use ModReadParam, ONLY: &
@@ -124,7 +125,7 @@ contains
          case("#TIMEACCURATE")
             call check_stand_alone
             call read_param_time(NameCommand)
-         case("#DISTRIBUTION")
+         case("#DISTRIBUTION", "#SDEBINNING")
             call read_param_distribution(NameCommand)
          case("#PARTICLE")
             call read_param_particle(NameCommand)
@@ -134,6 +135,8 @@ contains
             call read_param_solver(NameCommand)
          case("#DIFFUSION", "#BOUNDARY", "#ADVECTION")
             call read_param_fieldline(NameCommand)
+         case("#SAVEOUTPUT")
+            call read_param_plot(NameCommand)
          case default
             call CON_stop(NameSub//': Unknown command '//NameCommand)
          end select
@@ -255,6 +258,7 @@ contains
       TimeLimit = min(DataInputTime, TimeMax)
 
       ! run the model from PTTime to TimeLimit
+      write(*,*) '# ------------------------------------------------ #'
       if(iProc.eq.0) write(*,*) 'Advancing from: ', PTTime, TimeLimit
       call advance(TimeLimit)
       

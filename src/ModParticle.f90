@@ -222,7 +222,7 @@ contains
    !============================================================================
    subroutine advance_particles(iLine, TimeLimit, BinTime)
 
-      use PT_ModDistribution, only: bin_particle, TimeWindow
+      use PT_ModDistribution, only: bin_particle, BinTimeWindow
       use PT_ModFieldline,    only: check_boundary_conditions
       use PT_ModUnit,         only: momentum_to_kinetic_energy
 
@@ -249,10 +249,10 @@ contains
             
             ! bin particle in space/time/momentum at end of time step
             ! Particle weight is its initial weight multipled fraction of binning time spent in bin
-            if(Particle_IV(iParticle, Time_).ge.(BinTime-TimeWindow)) then
+            if(Particle_IV(iParticle, Time_).ge.(BinTime-BinTimeWindow)) then
                call bin_particle(Particle_IV(iParticle, LagrCoord_), &
                                  Particle_IV(iParticle, Momentum_),    &
-                                 Particle_IV(iParticle, Weight_) * Timestep / TimeWindow)
+                                 Particle_IV(iParticle, Weight_) * Timestep / BinTimeWindow)
             end if
 
             if(IsOutside) then

@@ -13,7 +13,7 @@ module PT_ModDistribution
     integer :: nEnergyBins, nLagrBins
     integer :: InjEnergyIndex
     real :: eBinMin, eBinMax
-    real :: TimeWindow, TotalWeight, InjEnergy, InjPcubed, InjCoeff 
+    real :: BinTimeWindow, TotalWeight, InjEnergy, InjPcubed, InjCoeff 
     ! Array for storing the counts
     real, allocatable :: Counts_II(:,:)
     ! Bins
@@ -21,6 +21,10 @@ module PT_ModDistribution
     ! How many total injected real protons 
     ! integral of f(p_inj) over phase space)
     real :: IntegralOverfInj
+
+    logical :: DoBinEntireFieldline
+    real :: BinCenterRs
+    integer :: BinWidthLagr
 
 contains
 !============================================================================
@@ -33,24 +37,35 @@ contains
         character(len=*), parameter:: NameSub = 'read_param'
         !--------------------------------------------------------------------------
         select case(NameCommand)
+
+        case("#SDEBINNING")
+            call read_var('DoBinEntireFieldline', DoBinEntireFieldline)
+            if(DoBinEntireFieldline) then
+                call read_var('nLagrBins', nLagrBins)
+            else
+                nLagrBins = 1
+                call read_var('BinCenterRs', BinCenterRs)
+                call read_var('BinWidthLagr', BinWidthLagr)
+            end if
+            call read_var('BinTimeWindow', BinTimeWindow)
+
         case('#DISTRIBUTION')
 
-        call read_var('nLagrBins', nLagrBins)
-        call read_var('nEnergyBins', nEnergyBins)
-        call read_var('eBinMin', eBinMin)
-        call read_var('eBinMax', eBinMax)
-        call read_var('InjEnergy', InjEnergy)
-        call read_var('InjCoeff', InjCoeff)
-        call read_var('TimeWindow', TimeWindow)
+            call read_var('nEnergyBins', nEnergyBins)
+            call read_var('eBinMin', eBinMin)
+            call read_var('eBinMax', eBinMax)
+            call read_var('InjEnergy', InjEnergy)
+            call read_var('InjCoeff', InjCoeff)
+        
 
-        ! Convert to joules
-        eBinMin = eBinMin * ckeV
-        eBinMax = eBinMax * ckeV
-        InjEnergy = InjEnergy * ckeV
-        InjPcubed = (kinetic_energy_to_momentum(InjEnergy)**3.0) / 3.0
+            ! Convert to joules
+            eBinMin = eBinMin * ckeV
+            eBinMax = eBinMax * ckeV
+            InjEnergy = InjEnergy * ckeV
+            InjPcubed = (kinetic_energy_to_momentum(InjEnergy)**3.0) / 3.0
 
         case default
-        call CON_stop(NameSub//' Unknown command '//NameCommand)
+            call CON_stop(NameSub//' Unknown command '//NameCommand)
         end select
     end subroutine read_param
 !============================================================================
@@ -90,16 +105,24 @@ contains
         ! Set the lagrangian phase space bins for this timestep
         ! Bins the entire fieldline
         use PT_ModGrid, only: MinLagr, MaxLagr
+        use PT_ModFieldline, only: CurrentState, RState_
         
         integer, intent(in) :: iLine
         
         integer :: iBin
         real :: dL
-
-        dL = real(MaxLagr(iline) - 1 - MinLagr(iLine)) / real(nLagrBins)
-        do iBin = 1, nLagrBins+1
-            LagrBin_I(iBin) = real(MinLagr(iLine)) + dL * (iBin - 1)
-        end do
+        
+        if(nLagrBins.eq.1) then
+            iBin = minloc(BinCenterRs - CurrentState(RState_, :), &
+                          mask = (BinCenterRs - CurrentState(RState_, :) > 0), dim = 1)
+            LagrBin_I(1) = iBin - BinWidthLagr
+            LagrBin_I(2) = iBin + 1 + BinWidthLagr
+        else
+            dL = real(MaxLagr(iline) - 1 - MinLagr(iLine)) / real(nLagrBins)
+            do iBin = 1, nLagrBins+1
+                LagrBin_I(iBin) = real(MinLagr(iLine)) + dL * (iBin - 1)
+            end do
+        end if
 
     end subroutine set_lagr_bins
 !============================================================================
@@ -157,7 +180,7 @@ contains
         ! index of bins particle is in
         iL = minloc(LagrCoord - LagrBin_I, mask = (LagrCoord - LagrBin_I > 0), dim = 1)
         iE = minloc(Momentum - PcubedBin_I, mask = (Momentum - PcubedBin_I > 0), dim = 1)
-        ! print *, LagrCoord, Energy
+  
         ! Increase the count in this bin by the weight of particle
         Counts_II(iE, iL) = Counts_II(iE, iL) + Weight
 
@@ -236,8 +259,8 @@ contains
         real :: dE(nEnergyBins)
 
         dE = EnergyBin_I(2:nEnergyBins+1) - EnergyBin_I(1:nEnergyBins)
-        IntFlux = sum(Spectra * dE / cMeV, mask = (EnergyBin_I > MinEnergy))
-
+        IntFlux = sum(Spectra * dE / 1000.0, mask = (EnergyBin_I > MinEnergy))
+        
     end subroutine calculate_integral_flux
 !============================================================================
 end module PT_ModDistribution

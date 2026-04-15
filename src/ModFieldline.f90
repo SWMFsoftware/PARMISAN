@@ -42,6 +42,8 @@ module PT_ModFieldline
     integer :: WidthUp, WidthDown
     real    :: dLogRhoLimit
     
+    real    :: Lambda0 = 0.3
+    integer :: UpstreamDxxModel = 1
     logical :: UseLogScaling  = .true.
     logical :: UseAdvectedRho = .false.
     logical :: DoScaleDlogRho = .true.
@@ -58,6 +60,9 @@ contains
         !--------------------------------------------------------------------------
         select case(NameCommand)
         case('#DIFFUSION')
+            call read_var('UpstreamDxxModel', UpstreamDxxModel)
+            if(UpstreamDxxModel.eq.3) &
+                call read_var('Lambda0', Lambda0)
             call read_var('DxxFactor', DxxFactor)
             call read_var('UseConstantDiffusion', UseConstantDiffusion)
             if(UseConstantDiffusion) &
@@ -171,18 +176,22 @@ contains
             where(MhdState2(BState_:RhoState_, :).ne.0) &
                 MhdState2(BState_:RhoState_, :) = log10(MhdState2(BState_:RhoState_, :))
         end if
+        
         ! interpolate fieldline in time
         CurrentState = (1 - Alpha) * MhdState1 + Alpha * MhdState2
 
         ! Do not advect shock during time period when shock first appears on fieldline
         ! Undo log and return time interpolated fieldline
         if((iShock1-iShock1Down).eq.0) then 
-            where(MhdState1(BState_:RhoState_, :).ne.0) &
-                MhdState1(BState_:RhoState_, :) = 10.0**MhdState1(BState_:RhoState_, :)
-            where(MhdState2(BState_:RhoState_, :).ne.0) &
-                MhdState2(BState_:RhoState_, :) = 10.0**MhdState2(BState_:RhoState_, :)
-            where(CurrentState(BState_:RhoState_, :).ne.0) &
-                CurrentState(BState_:RhoState_, :) = 10.0**CurrentState(BState_:RhoState_, :)           
+            if(UseLogScaling) then
+                where(MhdState1(BState_:RhoState_, :).ne.0) &
+                    MhdState1(BState_:RhoState_, :) = 10.0**MhdState1(BState_:RhoState_, :)
+                where(MhdState2(BState_:RhoState_, :).ne.0) &
+                    MhdState2(BState_:RhoState_, :) = 10.0**MhdState2(BState_:RhoState_, :)
+                where(CurrentState(BState_:RhoState_, :).ne.0) &
+                    CurrentState(BState_:RhoState_, :) = 10.0**CurrentState(BState_:RhoState_, :)      
+            end if    
+
             return
         end if
 
@@ -190,7 +199,6 @@ contains
         CurrentState(1:nStateAdvect, iShockNewDown:iShockNewUp) = &
             (1-alpha) * MhdState1(1:nStateAdvect, iShock1-WidthDown:iShock1+WidthUp) + &
             alpha   * MhdState2(1:nStateAdvect, iShock2-WidthDown:iShock2+WidthUp)
-
         ! end if
 
         ! interpolate over old mhd shock regions
@@ -227,8 +235,9 @@ contains
         ! Currently increase dLogRho by the maximum dLogRho calculated from the advected rho
         ! ------------------------------------------------------------------- !
         if(DoScaleDlogRho) then
-            dLogRhoMax = maxval(log(CurrentState(RhoState_, :) / &
-                                    PreviousState(RhoState_, :)) / (CurrentTime-PreviousTime))
+            dLogRhoMax = maxval(log(CurrentState(RhoState_, iShock1-WidthDown:iShock2+WidthUp) / &
+                                    PreviousState(RhoState_, iShock1-WidthDown:iShock2+WidthUp)) / &
+                                (CurrentTime-PreviousTime))
 
             where(CurrentState(dLogRho_, iShockNewDown:iShockNewUp).gt.0) &
                 CurrentState(dLogRho_, iShockNewDown:iShockNewUp) = &
@@ -323,9 +332,16 @@ contains
 
         ! upstream of shock - use empirical PSP values from Chen et al 2024
         if(R.gt.CurrentState(RState_, iShockNew+WidthUp)) then
-            call get_psp_dxx(R, Momentum, Dxx)
-            ! call get_upstream_dxx(R, Momentum, Dxx)
-
+            select case(UpstreamDxxModel)
+            case(1)
+                call get_psp_dxx(R, Momentum, Dxx)
+            case(2)
+                call interpolate_statevar(Time, LagrCoord, BState_, B)
+                call interpolate_statevar(Time, LagrCoord, dBState_, dB)
+                call get_mhd_dxx(R, B, dB, Momentum, Dxx)
+            case(3)
+                call get_upstream_dxx(R, Momentum, Dxx)
+            end select
         ! downstream of shock - use MHD turbulence
         else
             call interpolate_statevar(Time, LagrCoord, BState_, B)
@@ -333,7 +349,7 @@ contains
             call get_mhd_dxx(R, B, dB, Momentum, Dxx)
             
             ! Within shock region, reduce Dxx by factor set in PARAM
-            ! Do not let Dxx increase. 
+            ! Do not let Dxx increase (hence max 1)
             ! R0 = R value where DxxFactor = 1
             if(R.gt.CurrentState(RState_, iShockNew-WidthDown)) &
                 Dxx = Dxx / max(1.0, (DxxFactor / R**(log(DxxFactor)/log(R0))))
@@ -384,7 +400,6 @@ contains
         real, intent(in) :: R, Momentum
         real, intent(out) :: Dxx
 
-        real :: Lambda0 = 0.3
         real :: Energy, fac1, fac2, GeV
 
         Energy = sqrt((Momentum*cLightSpeed)**2 + cProtonRestEnergy**2) - cProtonRestEnergy

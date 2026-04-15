@@ -3,7 +3,7 @@
   !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModPlot
   
-  use PT_ModConst, only: ckeV, cPi
+  use PT_ModConst, only: ckeV, cPi, cMeV
   use PT_ModProc, ONLY : iProc, iComm, iError
   use PT_ModUnit, ONLY : kinetic_energy_to_momentum
   
@@ -18,7 +18,7 @@ module PT_ModPlot
   character(len=*), parameter :: RFile = 'R_bin.dat'
   character(len=*), parameter :: ShockLocFile = 'shock_loc.dat'
   character(len=*), parameter :: EarthFile = 'intflux_earth.dat'
-  
+
 contains
   !============================================================================
   subroutine read_param(NameCommand)
@@ -30,8 +30,8 @@ contains
     character(len=*), parameter:: NameSub = 'read_param'
     !--------------------------------------------------------------------------
     select case(NameCommand)
-    case('#PLOT')
-      ! Maybe something will go here one day...
+    case('#SAVEOUTPUT')
+      ! maybe something will go here one day
     case default
        call CON_stop(NameSub//' Unknown command '//NameCommand)
     end select
@@ -72,11 +72,9 @@ contains
     real :: Flux_II(nEnergyBins, nLagrBins)
 
     ! dummy variables during integration
-    ! TotalWeight and CountsOutsideProc need to be tracked throughout the simulation
     real :: TotalWeightProc
 
-
-    ! placeholders - need to reset to original valueafter summing over all processors
+    ! placeholders - need to reset to original value after summing over all processors
     TotalWeightProc = TotalWeight
 
     ! Sum over all processors
@@ -116,7 +114,7 @@ contains
 
   end subroutine save_plot_all
   !============================================================================
-  subroutine save_flux(Time,Flux_II)
+  subroutine save_flux(Time, Flux_II)
     use PT_ModDistribution, only: nLagrBins
 
     real, intent(in) :: Time, Flux_II(:,:)
@@ -143,7 +141,7 @@ contains
     
     ! TODO: Add channels to PARAM
     real :: RBins_I(nLagrBins+1)
-    real :: EnergyChannels(6) = (/1.0, 10.0, 30.0, 50.0, 100.0, 500.0/) * ckeV
+    real :: EnergyChannels(6) = (/1.0, 10.0, 30.0, 50.0, 100.0, 500.0/) * cMeV
     integer :: iBin, iR, nChannel = 6, iChannel
     real :: IntFluxChannels(6) = 0.0
     real :: EarthLoc = 215.0
