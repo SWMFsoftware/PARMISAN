@@ -1,6 +1,3 @@
-#ECHO
-T			DoEcho
-
 #CPUTIMEMAX
 28440       CpuTimeMax # 28440
 
@@ -17,18 +14,13 @@ MH_data.lst     NameTagFile
 #COORDSYSTEM
 GSM      TypeCoordSystem
 
-#CHECKGRIDSIZE
-4000 nVertexMax
-1    nLon
-1    nLat
-
-#GRIDNODE
+#FIELDLINEGRID
 1    nLon
 1    nLat
 
 #STOP
 5000       nIterMax
-2000        TimeMax # [s] max = 153720
+120        TimeMax # [s] max = 153720
 
 #BOUNDARY
 reflect     BoundaryInner
@@ -43,16 +35,19 @@ F       DoScaleDlogRho
 5         nShockWidth
 3         nSearchMax
 -0.01     dLogRhoThreshold
-F         DoOutputShock
+T         DoOutputShock
+
+#SDEBINNING
+T           DoBinEntireFieldline
+400         nLagrBins
+120         BinTimeWindow
 
 #DISTRIBUTION
-400         nLagrBins   
 200         nEnergyBin
 10.0        eBinMin      # [keV]
 1e7         eBinMax      # [keV]
 10.0        InjEnergy    # [keV]
 1.0         InjCoeff
-120         TimeWindow   # [s]
 
 #SDE
 1.0         TimeStepFactor   # 0.01
@@ -64,7 +59,7 @@ T           UseConstantDiffusion
 10.0        DxxConst
 
 #PARTICLE
-100               nInject        # how many particles injected per lagrangian coordinate
+0               nInject        # how many particles injected per lagrangian coordinate
 F               UseSplit
 40              nSplit         # number of energy thresholds where splitting occurs
 1.0             SplitEnergyMin # [MeV]

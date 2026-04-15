@@ -27,10 +27,6 @@ OBJECTS = \
 	ModAdvance.o \
 	ModDistribution.o
 
-ModSize.f90: ModSize_orig.f90
-	cp -f ModSize_orig.f90 ModSize.f90
-
-
 
 EXE = ${BINDIR}/MITTENS.exe
 
@@ -78,6 +74,3 @@ ${EXE}: ${OBJECTS_EXE}
 	rm -rf Tmp_
 
 clean: cleanfiles
-
-distclean: clean
-	rm -f ModSize.f90

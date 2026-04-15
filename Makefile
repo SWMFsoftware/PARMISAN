@@ -32,12 +32,6 @@ help:
 	@echo '    clean         (remove temp files like: *~ *.o etc)'
 	@echo '    distclean     (equivalent to ./Config.pl -uninstall)'
 
-
-install: src/ModSize.f90
-
-src/ModSize.f90: src/ModSize_orig.f90
-	cp -f src/ModSize_orig.f90 src/ModSize.f90
-
 LIB:    install
 	cd src;          make LIB
 	cd srcInterface; make LIB
@@ -66,13 +60,12 @@ rundir:
 		cp ${DIR}/share/JobScripts/*.${MACHINE}.pl ${RUNDIR}/; \
 		rm -f ${RUNDIR}/*_TMP_* ${DIR}/share/JobScripts/*_TMP_*; \
 		cp -f Param/PARAM.in.MFLAMPA ${RUNDIR}/PARAM.in; \
-		cp -f UpdateMittensParam.sh ${RUNDIR}/UpdateMittensParam.sh; \
 		touch ${RUNDIR}/core; chmod 444 ${RUNDIR}/core; \
 		cd ${RUNDIR}; ln -s ${BINDIR}/${DEFAULT_EXE} .; \
-		cp ${PTDIR}/Param/seed.in.test seed.in ; \
+		cp ${PTDIR}/Param/seed.in seed.in ; \
 	fi);
 
-clean:  install
+clean:  
 	@(if [ -r "Makefile.conf" ]; then \
 		cd src; make clean; \
 		cd ../srcInterface; make clean; \
@@ -84,8 +77,6 @@ distclean:
 allclean:
 	cd src; $(MAKE) distclean
 	cd srcInterface; $(MAKE) distclean
-
-# Testing
 
 test:
 	@echo "PT/MITTENS has no standalone test yet"

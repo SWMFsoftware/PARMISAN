@@ -45,7 +45,7 @@ contains
             ! how many vertices (lagrangian coordinates) the shock moved
             nProgress = max(1, iShock - iShockOld)
             iShockOld = min(iShockOld, iShock-1)
-            if(iProc.eq.0) write(*,*) 'ShockOld, ShockNew, dShock: ', &
+            if(iProc.eq.0) write(*,'(a, i5, i5, i5)') 'ShockOld, ShockNew, dShock: ', &
                                       iShockOld, iShock, iShock - iShockOld
             
             ! timestep for each subinterval where the shock moves one 
@@ -68,14 +68,14 @@ contains
                 ! advect shock
                 call advect_fieldline(Alpha, iShockNew, NextTimeStep)
 
+                if(DoOutputShock) &
+                    call save_fieldline_data(iProgress, NextTimeStep)
+
                 ! integrate injected distribution for later normalization
                 if(iProc.eq.0) then
                     call update_integral_over_finj(NextTimeStep - DtProgress, &
                                                    LagrInject)
                 end if
-
-                if(DoOutputShock) &
-                    call save_fieldline_data(iProgress, NextTimeStep)
 
                 ! inject particles at shock location at start of subinterval
                 call inject_particles(iLine, NextTimeStep - DtProgress, LagrInject)

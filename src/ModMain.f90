@@ -56,10 +56,6 @@ contains
       use ModReadParam, ONLY: &
             read_var, read_line, read_command, i_session_read, read_echo_set
 
-      ! aux variables
-      integer:: nParticleCheck, nLonCheck, nLatCheck
-      logical:: DoEcho
-
       ! The name of the command
       character (len=100) :: NameCommand
       ! Read the corresponding section of input file
@@ -78,9 +74,7 @@ contains
          case('#ORIGIN')
             if(IsStandAlone) CYCLE
             call read_param_origin
-         case('#COORDSYSTEM', '#COORDINATESYSTEM', '#TESTPOS', &
-               '#CHECKGRIDSIZE', '#GRIDNODE')
-            ! Currently we do not need '#DOSMOOTH'
+         case('#COORDSYSTEM', '#COORDINATESYSTEM','#FIELDLINEGRID')
             if(i_session_read() /= 1) CYCLE
             call read_param_grid(NameCommand)
          case('#READMHDATA','#MHDATA')
@@ -92,7 +86,6 @@ contains
          case('#TEST')
             call check_stand_alone
             call read_var('DoRunTest', DoRunTest)
-            !if(DoRunTest) call read_param_test(NameCommand)
          case('#END')
             call check_stand_alone
             IsLastRead=.true.
@@ -111,10 +104,6 @@ contains
          case('#CHECKSTOPFILE')
             call check_stand_alone
             call read_var('UseStopFile',UseStopFile)
-         case('#ECHO')
-            call check_stand_alone
-            call read_var('DoEcho', DoEcho)
-            if(iProc==0)call read_echo_set(DoEcho)
          case("#STARTTIME",'#NSTEP','#TIMESIMULATION')
             if(i_session_read() /= 1)CYCLE
             call read_param_time(NameCommand)
@@ -256,10 +245,12 @@ contains
       end if
 
       TimeLimit = min(DataInputTime, TimeMax)
+      if(iProc.eq.0) then 
+         write(*,*) '# ------------------------------------------------ #'   
+         write(*,'(a, f10.2, f10.2)') 'Advancing from: ', PTTime, TimeLimit
+      end if
 
       ! run the model from PTTime to TimeLimit
-      write(*,*) '# ------------------------------------------------ #'
-      if(iProc.eq.0) write(*,*) 'Advancing from: ', PTTime, TimeLimit
       call advance(TimeLimit)
       
       ! All processors must finish current timestep before saving solution

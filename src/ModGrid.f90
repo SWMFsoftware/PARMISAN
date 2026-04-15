@@ -173,28 +173,13 @@ contains
       use ModReadParam, ONLY: read_var
       character(len=*), intent(in):: NameCommand ! From PARAM.in
       ! Misc
-      integer :: nParticleCheck, nLonCheck, nLatCheck
       character(len=*), parameter:: NameSub = 'read_param'
       !--------------------------------------------------------------------------
       select case(NameCommand)
-      case('#CHECKGRIDSIZE')
-         call read_var('nVertexMax',nParticleCheck)
-         call read_var('nLon',     nLonCheck)
-         call read_var('nLat',     nLatCheck)
-         if(iProc==0.and.any([nLon,     nLat] /= [nLonCheck,nLatCheck])) &
-            write(*,'(a,2I5)') 'nLon,nLat are reset to ', nLonCheck, nLatCheck
-         nLon = nLonCheck
-         nLat = nLatCheck
-         nLineAll = nLon*nLat
-         if(nParticleCheck > nVertexMax)then
-            if(iProc==0)write(*,*)&
-               'nVertexMax is too small, use ./Config.pl -g=',nParticleCheck
-            call CON_stop('Code stopped')
-         end if
       case('#COORDSYSTEM','#COORDINATESYSTEM')
          call read_var('TypeCoordSystem', TypeCoordSystem, &
-            IsUpperCase=.true.)
-      case('#GRIDNODE')
+                       IsUpperCase=.true.)
+      case('#FIELDLINEGRID')
          call read_var('nLat',  nLat)
          call read_var('nLon',  nLon)
          nLineAll = nLat * nLon

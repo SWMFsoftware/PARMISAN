@@ -1,0 +1,75 @@
+#CPUTIMEMAX
+28440       CpuTimeMax # 28440
+
+#READMHDATA
+T                     DoReadMhData
+/mnt/e/Fieldline20260330    NameInputDir
+15      iLonFile
+15      iLatFile
+
+#MHDATA
+ascii       TypeFile
+MH_data.lst     NameTagFile
+
+#COORDSYSTEM
+GSM      TypeCoordSystem
+
+#FIELDLINEGRID
+1 nLon
+1 nLat
+
+#STOP
+2000        nIterMax
+86400       TimeMax # [s] max = 153720
+
+#BOUNDARY
+absorb      BoundaryInner
+absorb      BoundaryOuter
+
+#ADVECTION
+T       UseLogScaling
+F       UseAdvectedRho
+T       DoScaleDlogRho
+
+#IDENTIFYSHOCK
+50          nShockWidth
+100         nSearchMax
+0.0001      dLogRhoThreshold
+F           DoOutputShock
+
+#SDEBINNING
+F           DoBinEntireFieldline
+215         BinCenterRs
+2           BinWidthLagr
+120         BinTimeWindow  # [s]
+
+#DISTRIBUTION
+200         nEnergyBin
+1.0         eBinMin        # [keV]
+1e7         eBinMax        # [keV]
+10.0        InjEnergy      # [keV]
+1.0         InjCoeff
+
+#SDE
+1.0           TimeStepFactor 
+10.0          MaxTimeStep       # [s]
+
+#DIFFUSION
+1          UpstreamDxxModel     # (1) MHD (2) PSP (3) analytical
+20.0       DxxFactor            # Reduce Dxx within shock by this factor
+F          UseConstantDiffusion # Only for testing purposes
+
+#PARTICLE
+100             nInject        # how many psuedo-particles injected per lagrangian coordinate
+F               UseSplit
+10              nSplit         # number of energy thresholds where splitting occurs
+1.0             SplitEnergyMin # [MeV]
+100.0           SplitEnergyMax # [MeV]
+
+#INPUTSEED
+F               UseInputSeedFile
+
+#TEST
+F           DoRunTest
+
+#END
