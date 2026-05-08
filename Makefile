@@ -32,6 +32,9 @@ help:
 	@echo '    clean         (remove temp files like: *~ *.o etc)'
 	@echo '    distclean     (equivalent to ./Config.pl -uninstall)'
 
+# This target is needed for Config.pl
+install:
+
 LIB:    install
 	cd src;          make LIB
 	cd srcInterface; make LIB
