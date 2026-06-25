@@ -29,6 +29,8 @@ module PT_ModGrid
    public:: copy_old_state      ! save old arrays before getting new ones
    public:: get_other_state_var ! Auxiliary components of state vector
    public:: check_line_ishock   ! check if iShock exceeds iEnd of the field line
+   public:: calc_density_gradient
+   public:: get_density_gradient
 
    ! Coordinate system and geometry
    character(len=3), public :: TypeCoordSystem = 'HGR'
@@ -100,6 +102,8 @@ module PT_ModGrid
    ! 2nd index - particle index along the field line
    ! 3rd index - local line number
    real, public, pointer     :: State_VIB(:,:,:)
+
+   real, public, pointer      :: RGradient(:, :), DensityGradient(:, :)
 
    ! Number of variables in the state vector and the identifications
    integer, public, parameter :: nMhData = 13, nVar = 27, &
@@ -268,6 +272,11 @@ contains
       MaxLagrOld = 1
       MaxLagr = 1
 
+      allocate(RGradient(1:nVertexMax, nLine))
+      RGradient = 0.0
+      allocate(DensityGradient(1:nVertexMax, nLine))
+      DensityGradient = 0.0
+
       allocate(FootPoint_VB(LagrID_:Length_, nLine))
       FootPoint_VB = -1
 
@@ -386,6 +395,47 @@ contains
 
    end subroutine get_other_state_var
    !============================================================================
+   subroutine calc_density_gradient
+      
+      integer :: iLine, numLagr, iLagr, iAvg, iMin, iMax, count
+      integer :: window = 50
+      real :: sum
+      do iLine = 1, nLine
+         numLagr = MaxLagr(iLine) - MinLagr(iLine)
+
+         RGradient(1:numLagr, iLine) = State_VIB(R_, MinLagr(iLine):MaxLagr(iLine), iLine)
+         DensityGradient(2:numLagr-1, iLine) = log(MhData_VIB(Rho_, 3:numLagr, iLine)) - &
+            log(MhData_VIB(Rho_, 1:numLagr-2, iLine))
+         DensityGradient(2:numLagr-1, iLine) = DensityGradient(2:numLagr-1, iLine) / &
+            (log(RGradient(3:numLagr, iLine)) - log(RGradient(1:numLagr-2, iLine)))
+         DensityGradient(1, iLine) = DensityGradient(2, iLine)
+         DensityGradient(numLagr, iLine) = DensityGradient(numLagr-1, iLine)
+
+         where(isnan(DensityGradient(:, iLine))) DensityGradient(:, iLine) = 0.0d0
+         where(DensityGradient(:, iLine) > 1e3) DensityGradient(:, iLine) = 0.0d0
+
+         ! Smooth gradient         
+         do iLagr = 1, numLagr
+            iMin = max(1, iLagr - window)
+            iMax = min(numLagr, iLagr + window)
+
+            sum = 0.0d0
+            count = 0
+
+            do iAvg = iMin, iMax
+
+               sum = sum + DensityGradient(iAvg, iLine)
+               count = count + 1
+            end do
+
+            DensityGradient(iLagr, iLine) = sum / count
+         end do
+
+      end do
+      
+
+   end subroutine calc_density_gradient
+   !============================================================================
    subroutine check_line_ishock(iLine)
 
       ! check if the shock front is beyond the last coordinate of this field line
@@ -398,5 +448,20 @@ contains
       end if
    end subroutine check_line_ishock
    !============================================================================
+   subroutine get_density_gradient(iLine, R, GradientInRho)
+      integer, intent(in) :: iLine
+      real, intent(in) :: R
+      real, intent(out) :: GradientInRho
+
+      integer :: Index
+      real :: Rfrac
+
+      Index = minloc(R - RGradient(:, iLine), mask = (R - RGradient(:, iLine) > 0), dim = 1)
+      Rfrac = (R - RGradient(Index, iLine)) / (RGradient(Index+1, iLine) - RGradient(Index, iLine))
+
+      GradientInRho = (1-Rfrac) * DensityGradient(Index, iLine) + Rfrac * DensityGradient(Index+1, iLine)
+      GradientInRho = -GradientInRho
+
+    end subroutine get_density_gradient
 end module PT_ModGrid
 !==============================================================================

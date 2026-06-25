@@ -13,17 +13,15 @@ contains
         
         use PT_ModGrid,         only: nLine, Used_B, iShock_IB, Shock_, &
                                       ShockOld_
-        use PT_ModShock,        only: DoOutputShock
         use PT_ModParticle,     only: advance_particles, inject_particles
-        use PT_ModFieldline,    only: set_fieldline, advect_fieldline, &
-                                      save_fieldline_data
+        use PT_ModFieldline,    only: set_fieldline
         use PT_ModDistribution, only: set_lagr_bins, update_integral_over_finj
         use PT_ModTime,         only: iIter, PTTime, DataInputTime
         use PT_ModProc,         only: iComm, iError, iProc
 
         real, intent(in) :: TimeLimit
         integer :: iLine, iProgress, iShock, iShockOld, nProgress, iShockNew
-        real :: TotalDt, DtProgress, NextTimeStep, Alpha, LagrInject
+        real :: TotalDt, DtProgress, Time1,  Time2, Alpha, LagrInject
 
         ! Total timestep between MHD states
         TotalDt = DataInputTime - PTTime
@@ -43,8 +41,9 @@ contains
             iShockOld = iShock_IB(ShockOld_, iLine)
 
             ! how many vertices (lagrangian coordinates) the shock moved
+            ! If the shock doesn't move - set nProgress = 1
             nProgress = max(1, iShock - iShockOld)
-            iShockOld = min(iShockOld, iShock-1)
+
             if(iProc.eq.0) write(*,'(a, i5, i5, i5)') 'ShockOld, ShockNew, dShock: ', &
                                       iShockOld, iShock, iShock - iShockOld
             
@@ -58,32 +57,27 @@ contains
                 
                 ! new shock vertex
                 iShockNew = iShockOld + iProgress
-                ! interpolation weight
-                Alpha = iProgress / real(nProgress)
+                ! initial time for this subinterval
+                Time1 = PTTime + (iProgress-1)*DtProgress
                 ! final time for this subinterval
-                NextTimeStep = PTTime + (iProgress*DtProgress)
+                Time2 = PTTime + (iProgress*DtProgress)
                 ! inject particles at shock location
                 LagrInject = iShockNew
-                
-                ! advect shock
-                call advect_fieldline(Alpha, iShockNew, NextTimeStep)
 
-                if(DoOutputShock) &
-                    call save_fieldline_data(iProgress, NextTimeStep)
+                ! If shock did not move then do not inject psuedo-particles
+                if(iShock.gt.iShockOld) then
 
-                ! integrate injected distribution for later normalization
-                if(iProc.eq.0) then
-                    call update_integral_over_finj(NextTimeStep - DtProgress, &
-                                                   LagrInject)
+                    ! inject particles at shock location at start of subinterval
+                    call inject_particles(iLine, Time1, LagrInject)
+                    ! integrate injected distribution for later normalization
+                    if(iProc.eq.0) call update_integral_over_finj(Time1, LagrInject)
+
                 end if
 
-                ! inject particles at shock location at start of subinterval
-                call inject_particles(iLine, NextTimeStep - DtProgress, LagrInject)
+                ! advance psuedo-particles in time until NextTimeStep
+                call advance_particles(iLine, min(TimeLimit, Time2), TimeLimit)
 
-                ! advance particles in time until NextTimeStep
-                call advance_particles(iLine, min(TimeLimit, NextTimeStep), TimeLimit)
-
-                if(NextTimeStep.ge.TimeLimit) EXIT PROGRESS
+                if(Time2.ge.TimeLimit) EXIT PROGRESS
 
             end do PROGRESS
 

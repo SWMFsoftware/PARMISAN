@@ -235,12 +235,15 @@ contains
       ! Loop over particles on this line
       ! with particle splitting, new particles can be added - while loop needed
       iParticle = 1
+      
       PARTICLE: do while(iParticle.le.nParticleOnLine(iLine))
+      
          ! particle time loop    
          ! adaptive timestepping
          TIME: do while(Particle_IV(iParticle, Time_).lt.TimeLimit) 
             ! move particle one timestep
             call advance_particle(iParticle, TimeLimit, Timestep)
+
             ! check if particle left spatial boundaries
             call check_boundary_conditions(Particle_IV(iParticle, Time_),      &
                                            Particle_IV(iParticle, LagrCoord_), &

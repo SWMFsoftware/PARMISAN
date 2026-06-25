@@ -7,7 +7,7 @@ module PT_ModReadMhData
 
   use PT_ModGrid,    ONLY: iblock_to_lon_lat, get_other_state_var,   &
        nMHData, nLine, Z_, Used_B, FootPoint_VB, nVertex_B, MHData_VIB, &
-       LagrID_, MinLagr, MaxLagr, MinLagrOld, MaxLagrOld
+       LagrID_, MinLagr, MaxLagr, MinLagrOld, MaxLagrOld, calc_density_gradient
   use PT_ModTime,    ONLY: PTTime, DataInputTime
   use ModPlotFile,   ONLY: read_plot_file
   use ModUtilities,  ONLY: fix_dir_name, open_file, close_file, CON_stop
@@ -99,6 +99,7 @@ contains
       ! read the first input file
       call read_mh_data(DoOffsetIn = .false.)
       call get_other_state_var
+      call calc_density_gradient
 
       PTTime = DataInputTime
 
@@ -149,6 +150,7 @@ contains
    ! status of reading .lst file
    integer :: ioStat, SleepCounter = 0
    integer :: TimeToWait, TimeToQuit
+   integer :: ioError
 
    ! check whether need to apply offset, default is .true.
 
@@ -227,6 +229,34 @@ contains
          TimeOut    = DataInputTime       ,&
          n1out      = nVertex_B(iLine)    ,&
          ParamOut_I = Param_I(LagrID_:StartJulian_))
+
+      ! For Feb 2026 Artemis real-time demonstration
+      ! Sometimes M-FLAMPA files take a long time to write (hardware issue?)
+      ! Try for 10 minutes before aborting MITTENS
+
+      ! TimeToWait = 5   ! seconds
+      ! TimeToQuit = 600 ! seconds
+      ! do 
+      !    call read_plot_file(NameFile          ,&
+      !       TypeFileIn = TypeMhDataFile      ,&
+      !       TimeOut    = DataInputTime       ,&
+      !       n1out      = nVertex_B(iLine)    ,&
+      !       ParamOut_I = Param_I(LagrID_:StartJulian_), &
+      !       iErrorOut = ioError)
+
+      !    if(ioError.ne.0) then
+      !       SleepCounter = SleepCounter + TimeToWait
+      !       call sleep(TimeToWait)
+      !       if(SleepCounter.gt.TimeToQuit.and.iProc.eq.0) &
+      !          call CON_Stop(NameSub//': read_plot_file could not read file for 600 seconds.')
+      !       cycle
+      !    else
+      !       SleepCounter = 0
+      !       exit
+      !    end if
+
+      ! end do
+
       ! find offset in data between new and old states
       if(DoOffset)then
          ! check consistency: time counter MUST advance

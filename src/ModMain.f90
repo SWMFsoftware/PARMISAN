@@ -79,7 +79,7 @@ contains
             call read_param_grid(NameCommand)
          case('#READMHDATA','#MHDATA')
             call read_param_mhdata(NameCommand)
-         case('#TRACESHOCK', '#IDENTIFYSHOCK')
+         case('#SHOCK')
             call read_param_shock(NameCommand)
          case('#DORUN')
             call read_var('DoRun', DoRun)
@@ -191,7 +191,9 @@ contains
 
       use PT_ModGrid,          ONLY: get_other_state_var, copy_old_state, Used_B
       use PT_ModShock,         ONLY: get_shock_location, get_dLogRho, &
-                                     DoTraceShock, get_test_shock
+                                     get_test_shock, sharpen_shock, scale_shock, &
+                                     DoScaleShock, DoSharpenShock
+                                    
       use PT_ModReadMhData,    ONLY: read_mh_data
       use PT_ModTime,          ONLY: PTTime, DataInputTime, iIter
       use PT_ModAdvance,       ONLY: advance
@@ -211,7 +213,11 @@ contains
          if(.not.DoReadMhData) call get_other_state_var
          
          if(DoRunTest) then 
+            ! test shock not located at lagr = 1.
+            ! this subroutine sets iShock to the appropriate lagr coordinate
             call get_test_shock
+            if(DoScaleShock) call scale_shock
+            if(DoSharpenShock) call sharpen_shock
             call save_analytic_solution
          end if
          IsFirstCall = .false.
@@ -231,18 +237,14 @@ contains
       ! magnitude of magnetic field and velocity etc
       call get_other_state_var
 
-      ! if no new background data loaded, don't advance in time
       if(DataInputTime <= PTTime) RETURN
       
-      if(DoTraceShock) then
-         call get_dLogRho
-         if(DoRunTest) then
-            call get_test_shock
-         else
-            call get_shock_location
-         end if
-         call save_shock_location
-      end if
+      call get_dLogRho
+      call get_shock_location
+      if(DoScaleShock) call scale_shock
+      if(DoSharpenShock) call sharpen_shock
+      call save_shock_location
+
 
       TimeLimit = min(DataInputTime, TimeMax)
       if(iProc.eq.0) then 
@@ -255,6 +257,7 @@ contains
       
       ! All processors must finish current timestep before saving solution
       call MPI_BARRIER(iComm, iError)
+      
       if(DoRunTest) then
          call save_distribution_function(iIter + 1, TimeLimit)
       else

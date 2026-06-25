@@ -17,7 +17,6 @@ program MITTENS
    use PT_ModGrid,   ONLY: init_stand_alone, init_grid=>init
    use ModReadParam, ONLY: read_file, read_init
    use ModMpi
-   ! use PT_CreateSyntheticData, only: create_files
 
    implicit none
 
@@ -25,6 +24,13 @@ program MITTENS
    integer      :: iSession = 1
    real(Real8_) :: CpuTimeStart, IterStart, IterStop
    logical      :: IsFirstSession = .true.
+
+
+   ! Added 1/30/26 for Artemis II demonstration
+   ! Wait for LONLAT.earth file to appear before starting MITTENS
+   character(len=*), parameter :: LonLatFile = 'LONLAT.earth' 
+   logical :: FileExists
+   integer :: SleepCounter = 0, TimeToWait = 5, TimeToQuit = 3600
 
    ! Initialization of MPI/parallel message passing.
    !----------------------------------------------------------------------------
@@ -44,6 +50,21 @@ program MITTENS
 
    ! Mark the run as a stand alone
    IsStandAlone = .true.
+
+   ! Added 1/30/26 for Artemis II demonstration
+   ! Wait for LONLAT.earth file to appear before starting MITTENS
+   ! do
+   !    inquire(file = LonLatFile, exist = FileExists)
+   !    if(FileExists) then 
+   !       exit
+   !    else
+   !       call sleep(TimeToWait)
+   !       SleepCounter = SleepCounter + TimeToWait
+   !    end if
+   !    if(SleepCounter.gt.TimeToQuit.and.iProc.eq.0) then
+   !       call CON_Stop('LONLAT.earth never appeared.')
+   !    end if
+   ! end do
 
    ! Read PARAM.in file. Provide default restart file for #RESTART
    call read_file('PARAM.in',iComm)
@@ -70,7 +91,7 @@ program MITTENS
          if(is_time_to_stop()) EXIT SESSIONLOOP
          IterStart =  MPI_WTIME()
          call PT_run
-         if(iProc.eq.0) write(*,*) "iteration took: ", MPI_WTIME() - IterStart
+         if(iProc.eq.0) write(*,'(a, f8.4)') "iteration took: ", MPI_WTIME() - IterStart
          ! call show_progress
       end do TIMELOOP
 

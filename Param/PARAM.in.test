@@ -3,7 +3,7 @@
 
 #READMHDATA
 T                     DoReadMhData
-/home/adshane/TestFieldline/    NameInputDir
+/mnt/e/TestFieldline   NameInputDir
 1       iLonFile
 1       iLatFile
 
@@ -20,7 +20,7 @@ GSM      TypeCoordSystem
 
 #STOP
 5000       nIterMax
-120        TimeMax # [s] max = 153720
+500        TimeMax # [s]
 
 #BOUNDARY
 reflect     BoundaryInner
@@ -28,14 +28,13 @@ absorb      BoundaryOuter
 
 #ADVECTION
 F       UseLogScaling
-T       UseAdvectedRho
-F       DoScaleDlogRho
+F       UseAdvectedRho
 
-#IDENTIFYSHOCK
-5         nShockWidth
-3         nSearchMax
--0.01     dLogRhoThreshold
-T         DoOutputShock
+#SHOCK
+F         DoScaleShock
+F         DoSharpenShock
+300       nSearchMax
+0.0       dLogRhoThreshold
 
 #SDEBINNING
 T           DoBinEntireFieldline
@@ -54,7 +53,8 @@ T           DoBinEntireFieldline
 0.01        MaxTimeStep # [s]
 
 #DIFFUSION
-1.0         DxxFactor
+1           UpstreamDxxModel     # (1) MHD (2) PSP (3) analytical
+20.0        DxxFactor            # Reduce Dxx within shock by this factor
 T           UseConstantDiffusion
 10.0        DxxConst
 

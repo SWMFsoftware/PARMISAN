@@ -104,8 +104,8 @@ contains
     subroutine set_lagr_bins(iLine)
         ! Set the lagrangian phase space bins for this timestep
         ! Bins the entire fieldline
-        use PT_ModGrid, only: MinLagr, MaxLagr
-        use PT_ModFieldline, only: CurrentState, RState_
+        use PT_ModGrid, only: MinLagr, MaxLagr, State_VIB, R_
+        
         
         integer, intent(in) :: iLine
         
@@ -113,8 +113,8 @@ contains
         real :: dL
         
         if(nLagrBins.eq.1) then
-            iBin = minloc(BinCenterRs - CurrentState(RState_, :), &
-                          mask = (BinCenterRs - CurrentState(RState_, :) > 0), dim = 1)
+            iBin = minloc(BinCenterRs - State_VIB(R_, :, iLine), &
+                          mask = (BinCenterRs -  State_VIB(R_, :, iLine) > 0), dim = 1)
             LagrBin_I(1) = iBin - BinWidthLagr
             LagrBin_I(2) = iBin + 1 + BinWidthLagr
         else
@@ -203,6 +203,12 @@ contains
         real :: dP, dLagr, p1, p2
         real :: BinVolume, dSOverB
         integer :: iE, iL
+
+        ! Special case at start of run if no particles have been injected
+        if(TotalWeight.eq.0) then
+            DistFunc_II = 0.0
+            return
+        end if
 
         do iL = 1, nLagrBins
             dLagr = LagrBin_I(iL+1) - LagrBin_I(iL)

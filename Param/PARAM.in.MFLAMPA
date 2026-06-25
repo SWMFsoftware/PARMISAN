@@ -3,9 +3,9 @@
 
 #READMHDATA
 T                     DoReadMhData
-/mnt/e/Fieldline20260330    NameInputDir
-15      iLonFile
-15      iLatFile
+/mnt/e/Fieldline_20130411    NameInputDir
+1      iLonFile
+1      iLatFile
 
 #MHDATA
 ascii       TypeFile
@@ -20,27 +20,25 @@ GSM      TypeCoordSystem
 
 #STOP
 2000        nIterMax
-86400       TimeMax # [s] max = 153720
+7200        TimeMax # [s] max = 153720
 
 #BOUNDARY
-absorb      BoundaryInner
-absorb      BoundaryOuter
+reflect      BoundaryInner
+absorb       BoundaryOuter
 
 #ADVECTION
 T       UseLogScaling
-F       UseAdvectedRho
-T       DoScaleDlogRho
 
-#IDENTIFYSHOCK
-50          nShockWidth
+#SHOCK
+F           DoScaleShock
+F           DoSharpenShock
 100         nSearchMax
 0.0001      dLogRhoThreshold
-F           DoOutputShock
+
 
 #SDEBINNING
-F           DoBinEntireFieldline
-215         BinCenterRs
-2           BinWidthLagr
+T           DoBinEntireFieldline
+500         nLagrBins
 120         BinTimeWindow  # [s]
 
 #DISTRIBUTION
@@ -55,12 +53,13 @@ F           DoBinEntireFieldline
 10.0          MaxTimeStep       # [s]
 
 #DIFFUSION
-1          UpstreamDxxModel     # (1) MHD (2) PSP (3) analytical
-20.0       DxxFactor            # Reduce Dxx within shock by this factor
-F          UseConstantDiffusion # Only for testing purposes
+PSP                 UpstreamDxxModel     # (1) MHD (2) PSP (3) Analytical
+0.03                CorrelationLength    # default = 0.03
+1.0                 ScalingFactor        # Scales MHD Dxx
+F                   UseConstantDiffusion # Only for testing purposes
 
 #PARTICLE
-100             nInject        # how many psuedo-particles injected per lagrangian coordinate
+0               nInject        # how many psuedo-particles injected per lagrangian coordinate
 F               UseSplit
 10              nSplit         # number of energy thresholds where splitting occurs
 1.0             SplitEnergyMin # [MeV]
