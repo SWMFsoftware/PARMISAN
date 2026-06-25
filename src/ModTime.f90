@@ -2,7 +2,7 @@
 !  portions used with permission
 !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModTime
-  use ModTimeConvert, ONLY: time_int_to_julian, time_real_to_julian
+
   use ModKind,    ONLY: Real8_
   use ModUtilities, ONLY: CON_stop
 
@@ -71,7 +71,6 @@ contains
     use ModReadParam, ONLY: read_var
 
     character(len=*), intent(in):: NameCommand ! From PARAM.in
-    logical :: DoTimeAccurate = .true.
     character(len=*), parameter:: NameSub = 'read_param'
     !--------------------------------------------------------------------------
     select case(NameCommand)
@@ -96,7 +95,7 @@ contains
   end subroutine read_param
   !============================================================================
   subroutine init
-    use ModTimeConvert, ONLY: time_int_to_real
+    use ModTimeConvert, ONLY: time_int_to_real, time_int_to_julian
     !--------------------------------------------------------------------------
     call time_int_to_real(iStartTime_I, StartTime)
     ! also save the start time in Julian days;
