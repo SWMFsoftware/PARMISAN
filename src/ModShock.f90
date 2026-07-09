@@ -12,6 +12,7 @@ module PT_ModShock
 
   use PT_ModSize,   ONLY: nVertexMax
   use ModUtilities, ONLY: CON_stop
+  use PT_ModTime,   ONLY: DataInputTime, PTTime
 
   implicit none
 
@@ -26,10 +27,9 @@ module PT_ModShock
   public:: get_shock_location   ! finds shock location on all lines
   public:: sharpen_shock        ! steepen the density profile at the shock
   public:: get_test_shock
-  public:: scale_shock
 
   ! If the shock wave is traced, the advance algorithms are modified
-  logical, public :: DoScaleShock = .false., DoSharpenShock = .false.
+  logical, public :: DoSharpenShock = .false.
   ! divergence of velocity \vec{U}: for determining the shock locations
   real, public, allocatable :: dLogRho_II(:, :), dLogRhoOld_II(:, :)
 
@@ -42,51 +42,6 @@ module PT_ModShock
      RShock_     = 1, &
      ShockSpeed_ = 2
 
-  real, public, allocatable :: StateShock_II(:,:)
-  logical, public :: DoSaveStateShock = .false.
-
-  ! Shock variable names
-!   character(len=10), public, parameter:: NameVarShock_V(ShockID_:CompRatio_) &
-!        = ['ShockID   ', &
-!        'XShock    ', &
-!        'YShock    ', &
-!        'ZShock    ', &
-!        'RShock    ', &
-!        'nShock    ', &
-!        'TShock    ', &
-!        'UxShock   ', &
-!        'UyShock   ', &
-!        'UzShock   ', &
-!        'BxShock   ', &
-!        'ByShock   ', &
-!        'BzShock   ', &
-!        'Wave1Shock', &
-!        'Wave2Shock', &
-!        'LonShock  ', &
-!        'LatShock  ', &
-!        'CompRatio ']
-
-  ! Unit for all the shock variables: Length is in the unit of Rsun
-!   character(len=6), public :: NameVarShockUnit_V(ShockID_:CompRatio_) = [&
-!        'none  ', &
-!        'RSun  ', &
-!        'RSun  ', &
-!        'RSun  ', &
-!        'RSun  ', &
-!        'amu/m3', &
-!        'kev   ', &
-!        'm/s   ', &
-!        'm/s   ', &
-!        'm/s   ', &
-!        'T     ', &
-!        'T     ', &
-!        'T     ', &
-!        'J/m3  ', &
-!        'J/m3  ', &
-!        'Deg   ', &
-!        'Deg   ', &
-!        'none  ']
-
 contains
      !============================================================================
      subroutine read_param(NameCommand)
@@ -97,7 +52,6 @@ contains
           !--------------------------------------------------------------------------
           select case(NameCommand)
           case('#SHOCK')
-               call read_var('DoScaleShock', DoScaleShock)
                call read_var('DoSharpenShock', DoSharpenShock)
                call read_var('nSearchMax', nSearchMax)
                call read_var('dLogRhoThreshold', dLogRhoThreshold)
@@ -129,12 +83,6 @@ contains
           allocate(dLogRhoOld_II(1:nVertexMax, 1:nLine)) ! divU
           call check_allocate(iError, 'dLogRhoOld_II')
           dLogRhoOld_II = 0.0
-
-
-          if(allocated(StateShock_II)) deallocate(StateShock_II)
-          allocate(StateShock_II(1:nShockVar, 1:nLine))
-          call check_allocate(iError, 'StateShock_II')
-          StateShock_II = 0.0
 
 
      end subroutine init
@@ -173,59 +121,22 @@ contains
 
           end do
      end subroutine get_dLogRho
-     !============================================================================
-     subroutine scale_shock
-          use PT_ModGrid, only: get_density_gradient, Rho_, R_, D_, S_, SOld_, ROld_
-          use PT_ModProc, only: iProc
-          use PT_ModTime, only: DataInputTime, PTTime
-
-          integer :: iLine, iMin, iMax
-          integer :: iShockDown, iShock, iShockUp
-          real    :: GradientInRho, CompressionRatio
-          real :: ShockSpeed
-
-          do iLine = 1, nLine
-               iMin = MinLagr(iLine)
-               iMax = MaxLagr(iLine)
-               if(.not.Used_B(iLine)) CYCLE
-               ! If shock does not move - do not scale
-               if(iShock_IB(Shock_, iLine).eq.iShock_IB(ShockOld_, iLine)) CYCLE
-
-               iShock = iShock_IB(Shock_, iLine)
-               iShockDown = iShock_IB(ShockDown_, iLine)
-               iShockUp = iShock_IB(ShockUp_, iLine)
-
-               ! Calculate compression ratio. Density is normalized by local gradient calculated at 
-               ! the start of the simulation
-               call get_density_gradient(iLine, State_VIB(R_, iShock, iLine), GradientInRho)
-               CompressionRatio = MhData_VIB(Rho_, iShockDown, iLine) / &
-                                  MhData_VIB(Rho_, iShockUp, iLine)
-               CompressionRatio = CompressionRatio * (State_VIB(R_, iShockDown, iLine) / &
-                                                      State_VIB(R_, iShockUp, iLine))**GradientInRho
-             
-               ! limit compression ratio
-               if(CompressionRatio.lt.1.0.or.CompressionRatio.gt.4.0.and.iProc.eq.0) &
-                    write(*,*) 'Limiting CompressionRatio: ', CompressionRatio
-               CompressionRatio = min(4.0, max(1.0, CompressionRatio))
-
-               ! dLogRho_II(iShock_IB(ShockDown_, iLine):iShock_IB(ShockUp_, iLine), iLine) = &
-               !      dLogRho_II(iShock_IB(ShockDown_, iLine):iShock_IB(ShockUp_, iLine), iLine) * &
-               !      (DataInputTime - PTTime) / (iShock - iShock_IB(ShockOld_, iLine))
-
-               dLogRho_II(iShock_IB(ShockDown_, iLine):iShock_IB(ShockUp_, iLine), iLine) = &
-                    dLogRho_II(iShock_IB(ShockDown_, iLine):iShock_IB(ShockUp_, iLine), iLine) * &
-                    log(CompressionRatio) / sum(dLogRho_II(iShock_IB(ShockDown_, iLine):iShock_IB(ShockUp_, iLine), iLine))
-
-               
-          end do
-     end subroutine scale_shock
      !============================================================================        
      subroutine sharpen_shock
           use PT_ModGrid, only: get_density_gradient, Rho_, R_, B_, dB_, D_
           use PT_ModProc, only: iProc
 
           integer :: iLine
-          real    :: GradientInRho, dLogRhoSum
+          real    :: dLogRhoSum, dTauFactor
+
+          ! Sum the total density jump across the shock and apply to two 
+          ! lagrangian coordinates
+          ! SDE solvers need a finite shock width and the 2/3 - 1/3 split is from 
+          ! the analytical shock structure. 
+          
+          ! Re-scale dLogRho such that the total density jump changes faster than 
+          ! the coupling time and is the time it takes the shock to cross two 
+          ! lagrangian coordinates: 2 * (DataInputTime - PTTime) / (iShock - iShockOld)
 
           do iLine = 1, nLine
 
@@ -233,37 +144,15 @@ contains
                ! If shock does not move - do not sharpen
                if(iShock_IB(Shock_, iLine).eq.iShock_IB(ShockOld_, iLine)) CYCLE
 
+               dTauFactor = 0.5 * (iShock_IB(Shock_, iLine) - iShock_IB(ShockOld_, iLine))
+               if(dTauFactor.eq.0.0) dTauFactor = 1.0
+
                dLogRhoSum = sum(dLogRho_II(iShock_IB(ShockDown_, iLine):iShock_IB(ShockUp_, iLine), iLine))
 
                dLogRho_II(iShock_IB(ShockDown_, iLine):iShock_IB(ShockUp_, iLine), iLine) = dLogRhoThreshold
-               dLogRho_II(iShock_IB(Shock_, iLine), iLine) = dLogRhoSum * 2.0 / 3.0
-               dLogRho_II(iShock_IB(Shock_, iLine) + 1, iLine) = dLogRhoSum / 3.0
+               dLogRho_II(iShock_IB(Shock_, iLine), iLine) = dLogRhoSum * 2.0 / 3.0 * dTauFactor
+               dLogRho_II(iShock_IB(Shock_, iLine) + 1, iLine) = dLogRhoSum / 3.0 * dTauFactor
 
-               ! Create step-functions of dS, B, dB at shock location
-               ! State_VIB(D_, iShock_IB(ShockDown_, iLine):iShock_IB(Shock_, iLine), iLine) = &
-               !      State_VIB(D_, iShock_IB(ShockDown_, iLine), iLine)
-               ! State_VIB(D_, iShock_IB(Shock_, iLine)+2:iShock_IB(ShockUp_, iLine), iLine) = &
-               !      State_VIB(D_, iShock_IB(ShockUp_, iLine), iLine)
-               ! State_VIB(D_, iShock_IB(Shock_, iLine)+1, iLine) = 0.5 * &
-               !      (State_VIB(D_, iShock_IB(ShockDown_, iLine), iLine) + State_VIB(D_, iShock_IB(ShockUp_, iLine), iLine))
-
-               ! State_VIB(B_, iShock_IB(ShockDown_, iLine):iShock_IB(Shock_, iLine), iLine) = &
-               !      State_VIB(B_, iShock_IB(ShockDown_, iLine), iLine)
-               ! State_VIB(B_, iShock_IB(Shock_, iLine)+2:iShock_IB(ShockUp_, iLine), iLine) = &
-               !      State_VIB(B_, iShock_IB(ShockUp_, iLine), iLine)
-               ! State_VIB(B_, iShock_IB(Shock_, iLine)+1, iLine) = 0.5 * &
-               !      (State_VIB(B_, iShock_IB(ShockDown_, iLine), iLine) + State_VIB(B_, iShock_IB(ShockUp_, iLine), iLine))
-
-               ! State_VIB(dB_, iShock_IB(ShockDown_, iLine):iShock_IB(Shock_, iLine), iLine) = &
-               !      State_VIB(dB_, iShock_IB(ShockDown_, iLine), iLine)
-               ! State_VIB(dB_, iShock_IB(Shock_, iLine)+2:iShock_IB(ShockUp_, iLine), iLine) = &
-               !      State_VIB(dB_, iShock_IB(ShockUp_, iLine), iLine)
-               ! State_VIB(dB_, iShock_IB(Shock_, iLine)+1, iLine) = 0.5 * &
-               !      (State_VIB(dB_, iShock_IB(ShockDown_, iLine), iLine) + State_VIB(dB_, iShock_IB(ShockUp_, iLine), iLine))
-               
-               ! Set new width of shock
-               iShock_IB(ShockDown_, iLine) = iShock_IB(Shock_, iLine) - 2
-               iShock_IB(ShockUp_, iLine) = iShock_IB(Shock_, iLine) + 3
           end do
 
      end subroutine sharpen_shock

@@ -37,7 +37,6 @@ module PT_ModFieldline
     real    :: iShockNow
     integer :: iShock1Up, iShock2Up, iShock1Down, iShock2Down
     integer :: WidthUpNow, WidthDownNow
-    real    :: dLogRhoLimit
     
     logical :: UseConstantDiffusion = .false.
     real    :: DxxConst = 10.0
@@ -203,17 +202,9 @@ contains
             ! iShock1 and iShock2
             ! dLagr becomes the fractional part of iS1 and iS2
 
-            if(dLagr.ge.0.0) then
-                iS1 = int(real(iShock1) + dLagr)
-                iS2 = int(real(iShock2) + dLagr)
-                dLagr = dLagr - int(dLagr)
-            else
-                dLagr = -dLagr
-                iS1 = int(real(iShock1) - dLagr)
-                iS2 = int(real(iShock2) - dLagr) 
-                dLagr = 1.0 - dLagr + int(dLagr)
-                if(dLagr.eq.1) dLagr = 0.0
-            end if
+            iS1 = int(iShock1 + dLagr)
+            iS2 = int(iShock2 + dLagr)
+            dLagr = LagrCoord - int(LagrCoord)
 
             ! spatial interpolation at MHD state 1
             f1 = (1 - dLagr) * MhdState1(Var, iS1) + & 
@@ -223,7 +214,7 @@ contains
                  dLagr * MhdState2(Var, iS2+1)    
 
             InterpValue = (1 - TimeFrac) * f1 + TimeFrac * f2
-
+ 
         ! Pseudo-particle downstream of current shock region but 
         ! upstream of previous
         else if(LagrCoord.lt.(iShockNow-WidthDownNow)) then
@@ -271,6 +262,7 @@ contains
 
         ! upstream of shock - selected in PARAM
         if(LagrCoord.gt.(iShockNow + WidthUpNow)) then
+
             select case(UpstreamDxxModel)
             case("PSP")
                 call get_psp_dxx(R, Momentum, Dxx)
@@ -280,19 +272,15 @@ contains
                 call get_mhd_dxx(R, B, dB, Momentum, Dxx)
             case("Analytical")
                 call get_upstream_dxx(R, Momentum, Dxx)
+            case default
+                call get_psp_dxx(R, Momentum, Dxx)
             end select
+
         ! downstream of shock - use MHD turbulence
         else
             call interpolate_statevar(Time, LagrCoord, BState_, B)
             call interpolate_statevar(Time, LagrCoord, dBState_, dB)
             call get_mhd_dxx(R, B, dB, Momentum, Dxx)
-            ! Scale Dxx inside shock
-            if(LagrCoord.gt.(iShockNow - WidthDownNow)) Dxx = Dxx * ScalingFactor
-
-            ! Alternative scaling by radial distance
-            ! Hardcoded 20.0 = distance where factor becomes 1
-            ! if(LagrCoord.gt.(iShockNow - WidthDownNow)) &
-            !         Dxx = Dxx / max(1.0, (ScalingFactor / R**(log(ScalingFactor)/log(20.0))))
 
         end if
 
@@ -312,12 +300,14 @@ contains
         Lmax = CorrelationLength*R*cRsun
 
         Btotal = sqrt(B**2 + dB)
+        ! Btotal = B
 
         MeanFreePath = ConstantFactor * Btotal**2 * &
                         (Momentum*Lmax**2/(Btotal * cElectronCharge))**(1.0/3.0) / dB
         ! Calculate Dxx 
         Dxx = MeanFreePath * Velocity / 3.0
         Dxx = max(Dxx, 1.0d4 * cRsun)
+        Dxx = Dxx * ScalingFactor
 
     end subroutine get_mhd_dxx
     !============================================================================ 
@@ -383,23 +373,23 @@ contains
         call get_dxx(Time, X_I(1) + 1.0, Momentum, DxxUp)
 
         ! get values one lagrangian coordinate upstream of particle location
-        call interpolate_statevar(Time, X_I(1) - 1.0, BState_, Bdown)
-        call interpolate_statevar(Time, X_I(1) - 1.0, dSState_, dSdown)
-        call get_dxx(Time, X_I(1) - 1.0, Momentum, DxxDown)
+        ! call interpolate_statevar(Time, X_I(1) - 1.0, BState_, Bdown)
+        ! call interpolate_statevar(Time, X_I(1) - 1.0, dSState_, dSdown)
+        ! call get_dxx(Time, X_I(1) - 1.0, Momentum, DxxDown)
 
         ! convert from [Rsun] to [m]
         dS = dS * cRsun
         dSup = dSup * cRsun
-        dSdown = dSdown * cRsun
+        ! dSdown = dSdown * cRsun
         
         ! lagr coord sde coefficients
-        DriftCoeff(1) = B * ((DxxUp / (Bup * dSup)) - (DxxDown / (Bdown * dSdown))) / (dSdown + dS)
+        DriftCoeff(1) = B * ((DxxUp / (Bup * dSup)) - (Dxx / (B * dS))) / dS
         DiffCoeff(1) = sqrt(2.0 * Dxx) / dS
 
         ! momentum sde coefficients
         DriftCoeff(2) = X_I(2) * dLogRhodTau
         DiffCoeff(2) = 0.0
-                
+
         ! calculate timestep based on coefficients
         ! diffusion >> drift
         ! Maximum spatial step size is less than shockwidth

@@ -30,8 +30,7 @@ absorb       BoundaryOuter
 T       UseLogScaling
 
 #SHOCK
-F           DoScaleShock
-F           DoSharpenShock
+T           DoSharpenShock
 100         nSearchMax
 0.0001      dLogRhoThreshold
 
