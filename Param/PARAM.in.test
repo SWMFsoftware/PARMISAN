@@ -28,10 +28,8 @@ absorb      BoundaryOuter
 
 #ADVECTION
 F       UseLogScaling
-F       UseAdvectedRho
 
 #SHOCK
-F         DoScaleShock
 F         DoSharpenShock
 300       nSearchMax
 0.0       dLogRhoThreshold
@@ -53,9 +51,10 @@ T           DoBinEntireFieldline
 0.01        MaxTimeStep # [s]
 
 #DIFFUSION
-1           UpstreamDxxModel     # (1) MHD (2) PSP (3) analytical
-20.0        DxxFactor            # Reduce Dxx within shock by this factor
-T           UseConstantDiffusion
+MHD         UpstreamDxxModel     # (1) MHD (2) PSP (3) analytical
+0.03        CorrelationLength    # default = 0.03
+1.0         ScalingFactor        # Scales MHD Dxx
+T           UseConstantDiffusion # if True, negates above parameters
 10.0        DxxConst
 
 #PARTICLE
