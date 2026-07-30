@@ -191,8 +191,7 @@ contains
 
       use PT_ModGrid,          ONLY: get_other_state_var, copy_old_state, Used_B
       use PT_ModShock,         ONLY: get_shock_location, get_dLogRho, &
-                                     get_test_shock, sharpen_shock, scale_shock, &
-                                     DoScaleShock, DoSharpenShock
+                                     get_test_shock, sharpen_shock, DoSharpenShock
                                     
       use PT_ModReadMhData,    ONLY: read_mh_data
       use PT_ModTime,          ONLY: PTTime, DataInputTime, iIter
@@ -216,7 +215,7 @@ contains
             ! test shock not located at lagr = 1.
             ! this subroutine sets iShock to the appropriate lagr coordinate
             call get_test_shock
-            if(DoScaleShock) call scale_shock
+
             if(DoSharpenShock) call sharpen_shock
             call save_analytic_solution
          end if
@@ -241,7 +240,7 @@ contains
       
       call get_dLogRho
       call get_shock_location
-      if(DoScaleShock) call scale_shock
+
       if(DoSharpenShock) call sharpen_shock
       call save_shock_location
 
@@ -254,16 +253,17 @@ contains
 
       ! run the model from PTTime to TimeLimit
       call advance(TimeLimit)
-      
+  
       ! All processors must finish current timestep before saving solution
       call MPI_BARRIER(iComm, iError)
-      
+  
       if(DoRunTest) then
          call save_distribution_function(iIter + 1, TimeLimit)
       else
+
          call save_plot_all(iIter + 1, TimeLimit)
       end if
-      
+
       ! update time & iteration counters
       iIter = iIter + 1
       PTTime = TimeLimit
