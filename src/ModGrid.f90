@@ -17,7 +17,6 @@ module PT_ModGrid
    use PT_ModConst,  ONLY: cTwoPi, cPi
    use PT_ModConst,  ONLY: cMu, cRsun, cProtonMass
    use PT_ModTime,   ONLY: PTTime, DataInputTime
-
    implicit none
    SAVE
 
@@ -396,10 +395,10 @@ contains
    end subroutine get_other_state_var
    !============================================================================
    subroutine calc_density_gradient
-      
-      integer :: iLine, numLagr, iLagr, iAvg, iMin, iMax, count
-      integer :: window = 50
-      real :: sum
+     use, intrinsic:: ieee_arithmetic
+     integer :: iLine, numLagr, iLagr, iAvg, iMin, iMax, count
+     integer :: window = 50
+     real :: sum
       do iLine = 1, nLine
          numLagr = MaxLagr(iLine) - MinLagr(iLine)
 
@@ -411,7 +410,7 @@ contains
          DensityGradient(1, iLine) = DensityGradient(2, iLine)
          DensityGradient(numLagr, iLine) = DensityGradient(numLagr-1, iLine)
 
-         where(isnan(DensityGradient(:, iLine))) DensityGradient(:, iLine) = 0.0d0
+         where(ieee_is_nan(DensityGradient(:, iLine))) DensityGradient(:, iLine) = 0.0d0
          where(DensityGradient(:, iLine) > 1e3) DensityGradient(:, iLine) = 0.0d0
 
          ! Smooth gradient         

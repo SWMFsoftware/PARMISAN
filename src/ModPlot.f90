@@ -284,7 +284,7 @@ contains
     do i = 1, nEnergyBins+1
       Pnorm = kinetic_energy_to_momentum(EnergyBin_I(i)) / P0
       fSteadyState(i) = Pnorm ** PowerLaw
-      Tacc(i) = 3.0 * DxxConst * (UpstreamU**-1.0 + DownstreamU**-1.0) &
+      Tacc(i) = 3.0 * DxxConst * (UpstreamU**(-1.0) + DownstreamU**(-1.0)) &
                 / (UpstreamU - DownstreamU) * log(Pnorm)
     end do
 
