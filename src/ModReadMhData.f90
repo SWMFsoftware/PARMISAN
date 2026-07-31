@@ -10,7 +10,7 @@ module PT_ModReadMhData
        LagrID_, MinLagr, MaxLagr, MinLagrOld, MaxLagrOld, calc_density_gradient
   use PT_ModTime,    ONLY: PTTime, DataInputTime
   use ModPlotFile,   ONLY: read_plot_file
-  use ModUtilities,  ONLY: fix_dir_name, open_file, close_file, CON_stop
+  use ModUtilities,  ONLY: fix_dir_name, open_file, close_file, CON_stop, sleep
   use ModIoUnit,     ONLY: io_unit_new
 
   implicit none
@@ -178,7 +178,7 @@ contains
       if(ioStat.lt.0) then
          backspace(iIOTag)
          SleepCounter = SleepCounter + TimeToWait
-         call sleep(TimeToWait)
+         call sleep(real(TimeToWait))
          if(SleepCounter.gt.TimeToQuit.and.iProc.eq.0) &
             call CON_Stop(NameSub//': .lst file not updated for 120 seconds.')
          cycle
