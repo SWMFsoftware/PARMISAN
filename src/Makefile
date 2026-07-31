@@ -74,3 +74,5 @@ ${EXE}: ${OBJECTS_EXE}
 	rm -rf Tmp_
 
 clean: cleanfiles
+
+distclean: clean
