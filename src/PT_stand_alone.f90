@@ -113,7 +113,11 @@ program MITTENS
 
    ! Touch MITTENS.SUCCESS
    if(iProc==0) call touch_file('MITTENS.SUCCESS')
-   
+
+   ! No processor may start MPI teardown until rank 0 has finished
+   ! writing output: an MPI abort during finalize kills all ranks
+   call MPI_BARRIER(iComm, iError)
+
    ! Finalize MPI
    call MPI_Finalize(iError)
 

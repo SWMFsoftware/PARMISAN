@@ -52,10 +52,11 @@ ${MY_LIB}: ${MODULES} ${OBJECTS} \
 	rm -f ${MY_LIB}
 	${AR} ${MY_LIB} ${OBJECTS}
 
-# Additional ibraries should be compiled first
-# ${OBJECTS_EXE}: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
 # Object files not included into the library
 OBJECTS_EXE = PT_stand_alone.o
+
+# Additional libraries should be compiled first
+${OBJECTS_EXE}: ${LIBSHARE} ${LIBTIMING} ${MY_LIB}
 
 MITTENS:
 	make ${EXE}

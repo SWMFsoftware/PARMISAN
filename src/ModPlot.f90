@@ -41,6 +41,10 @@ contains
     use ModUtilities, only: touch_file
     use PT_ModDistribution, only: EnergyBin_I, LagrBin_I
 
+    ! Only rank 0 creates output files: all saving below is done by rank 0,
+    ! and concurrent creation of the same file can fail on some filesystems
+    if(iProc /= 0) RETURN
+
     ! write energy bin file - stays constant throughout simulation
     open(801,file=OutputDir//EnergyBinFile,status='unknown')
     write(801,'(3000e15.6)')EnergyBin_I/ckeV
