@@ -52,7 +52,6 @@ my $Src = 'src';
 my $NameSizeFile = "$Src/ModSize.f90";
 my $GridSize;
 my $nX;
-my $nP;
 
 # Read previous grid size
 &get_settings;
@@ -80,23 +79,19 @@ exit 0;
 sub get_settings{
 
     $nX = 0;
-    $nP = 0;
 
-    # Read size of the grid and max number of particles from $NameSizeFile
+    # Read size of the grid from $NameSizeFile
     open(FILE, $NameSizeFile) or die "$ERROR could not open $NameSizeFile\n";
     while(<FILE>){
 	next if /^\s*!/;
 	$nX = $1 if /\bnVertexMax\s*=[^0-9]*(\d+)/i;
-	$nP = $1 if /\bnParticle\s*=[^0-9]*(\d+)/i;
     }
     close FILE;
 
-    die "$ERROR could not read nVertexMax from $NameSizeFile\n" 
+    die "$ERROR could not read nVertexMax from $NameSizeFile\n"
 	unless $nX > 0;
-    die "$ERROR could not read nParticle from $NameSizeFile\n" 
-	unless $nP > 0;
 
-    $GridSize = "$nX,$nP";
+    $GridSize = "$nX";
 
 }
 
@@ -106,15 +101,13 @@ sub set_grid_size{
 
     $GridSize = $NewGridSize if $NewGridSize;
 
-    if($GridSize =~ /^[1-9]\d*,[1-9]\d*$/){
-	($nX,$nP) = split(',', $GridSize);
-    }elsif($GridSize =~ /^[1-9]\d*$/){
+    if($GridSize =~ /^[1-9]\d*$/){
 	$nX = $GridSize;
     }elsif($GridSize){
-	die "$ERROR -g=$GridSize must be one to three integers\n";
+	die "$ERROR -g=$GridSize must be a positive integer\n";
     }
     # Check the grid size (to be set)
-    die "$ERROR nParticleMax=$nX must be positive\n" if $nX<=0;
+    die "$ERROR nVertexMax=$nX must be positive\n" if $nX<=0;
 
     print "Writing new grid size $GridSize into ".
 	"$NameSizeFile ...\n";
@@ -123,7 +116,6 @@ sub set_grid_size{
     while(<>){
 	if(/^\s*!/){print; next} # Skip commented out lines
 	s/\b(nVertexMax\s*=[^0-9]*)(\d+)/$1$nX/i;
-	s/\b(nParticle\s*=[^0-9]*)(\d+)/$1$nP/i if length($nP)>0;
 	print;
     }
 }
@@ -133,11 +125,11 @@ sub set_grid_size{
 sub print_help{
 
     print "
-Additional options for PARMISAN/Config.pl:
+Additional options for MITTENS/Config.pl:
 
--g=nX,nP
-                Set grid size. nX is the number of grid cells and
-                nP is maximum number of particles per field line,
+-g=nX
+                Set grid size. nX is the maximum number of vertices
+                per field line.
 \n";
     exit 0;
 }
@@ -146,6 +138,5 @@ Additional options for PARMISAN/Config.pl:
 
 sub current_settings{
     $Settings  = "Number of nodes per line: $nX\n";
-    $Settings .= "Number of particles per line: $nP\n";
 }
 

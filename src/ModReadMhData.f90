@@ -5,13 +5,13 @@ module PT_ModReadMhData
 
   ! This module contains methods for reading input MH data
 
-  use PT_ModGrid,    ONLY: iblock_to_lon_lat, get_other_state_var,   &
+  use PT_ModGrid, ONLY: iblock_to_lon_lat, get_other_state_var,   &
        nMHData, nLine, Z_, Used_B, FootPoint_VB, nVertex_B, MHData_VIB, &
        LagrID_, MinLagr, MaxLagr, MinLagrOld, MaxLagrOld, calc_density_gradient
-  use PT_ModTime,    ONLY: PTTime, DataInputTime
-  use ModPlotFile,   ONLY: read_plot_file
-  use ModUtilities,  ONLY: fix_dir_name, open_file, close_file, CON_stop, sleep
-  use ModIoUnit,     ONLY: io_unit_new
+  use PT_ModTime, ONLY: PTTime, DataInputTime
+  use ModPlotFile, ONLY: read_plot_file
+  use ModUtilities, ONLY: fix_dir_name, open_file, close_file, CON_stop, sleep
+  use ModIoUnit, ONLY: io_unit_new
 
   implicit none
 
@@ -39,15 +39,15 @@ module PT_ModReadMhData
   integer :: iLonFile, iLatFile
 
 contains
-   !============================================================================
+  !============================================================================
    subroutine read_param(NameCommand)
 
       use ModReadParam, ONLY: read_var
       ! set parameters of input files with background data
       ! integer :: nFileRead
       character (len=*), intent(in):: NameCommand ! From PARAM.in
-      character(len=*), parameter:: NameSub = 'read_param'
-      !--------------------------------------------------------------------------
+    character(len=*), parameter:: NameSub = 'read_param'
+    !--------------------------------------------------------------------------
       select case(NameCommand)
       case('#READMHDATA')
          ! determine whether to read the MHD data
@@ -82,20 +82,20 @@ contains
       end select
 
    end subroutine read_param
-   !============================================================================
+  !============================================================================
    subroutine init
       ! initialize by setting the time and interation index of input files
       integer:: iTag
       character(len=50):: StringAux
-      character(len=*), parameter:: NameSub = 'init'
-      !--------------------------------------------------------------------------
+    character(len=*), parameter:: NameSub = 'init'
+    !--------------------------------------------------------------------------
       if(.not.DoReadMhData) RETURN
 
       ! open the file with the list of tags
       iIOTag = io_unit_new()
       call open_file(iUnitIn=iIOTag, &
          file=trim(NameInputDir)//trim(NameTagFile), status='old')
-   
+
       ! read the first input file
       call read_mh_data(DoOffsetIn = .false.)
       call get_other_state_var
@@ -113,18 +113,18 @@ contains
   end subroutine finalize
   !============================================================================
   subroutine read_mh_data(DoOffsetIn)
-   
-   use PT_ModProc, only: iProc
-   
+
+   use PT_ModProc, ONLY: iProc
+
    character(len=*), parameter :: NameMHData = "MH_data"
    logical, optional, intent(in ):: DoOffsetIn
 
    ! read 1D MH data, which are produced by MFLAMPA in
    ! write_mh_1d n ModWrite
-   
+
    ! separate file is read for each field line, name format is
    ! (usually)MH_data_<iLon>_<iLat>_t<ddhhmmss>_n<iIter>.{out/dat}
-   
+
    ! name of the input file
    character(len=100):: NameFile
    ! loop variables
@@ -136,6 +136,9 @@ contains
    integer :: startIndex = 1
    ! local value of DoOffset
    logical:: DoOffset
+   ! whether the input file exists; scalar INQUIRE target, works around a
+   ! nagfor 7.1 -O2 -C -gline miscompilation of exist=Used_B(iLine)
+   logical:: DoesFileExist
    ! auxilary variables to apply positive offset for appended particles
    ! auxilary parameter index
    integer, parameter:: RShock_ = Z_ + 2
@@ -154,8 +157,8 @@ contains
 
    ! check whether need to apply offset, default is .true.
 
-   character(len=*), parameter:: NameSub = 'read_mh_data'
-   !--------------------------------------------------------------------------
+    character(len=*), parameter:: NameSub = 'read_mh_data'
+    !--------------------------------------------------------------------------
    if(present(DoOffsetIn))then
       DoOffset = DoOffsetIn
    else
@@ -170,25 +173,25 @@ contains
    ! Terminate if .lst is not updated after 2 minutes
    TimeToWait = 1   ! seconds
    TimeToQuit = 600 ! seconds
-   do 
+   do
       read(iIOtag, '(a)', iostat = ioStat) StringTag
       ! sometimes the file returns empty string and the next read is successful
       ! if the string is empty, the fieldline will be marked as unused
-      if(StringTag.eq.'') read(iIOtag, '(a)', iostat = ioStat) StringTag
-      if(ioStat.lt.0) then
+      if(StringTag == '') read(iIOtag, '(a)', iostat = ioStat) StringTag
+      if(ioStat < 0) then
          backspace(iIOTag)
          SleepCounter = SleepCounter + TimeToWait
          call sleep(real(TimeToWait))
-         if(SleepCounter.gt.TimeToQuit.and.iProc.eq.0) &
+         if(SleepCounter > TimeToQuit.and.iProc == 0) &
             call CON_Stop(NameSub//': .lst file not updated for 120 seconds.')
-         cycle
-      else if(ioStat.gt.0.and.iProc.eq.0) then
+         CYCLE
+      else if(ioStat > 0.and.iProc == 0) then
          call CON_Stop(NameSub//': error reading .lst file.')
       else
          ! print *, 'Successful: ', StringTag
          ! Reset sleep counter for next file read
          SleepCounter = 0
-         exit
+         EXIT
       end if
 
    end do
@@ -198,21 +201,22 @@ contains
    DataInputTimeOld = DataInputTime
    ! read the data
    line:do iLine = 1, nLine
-      
+
       if(.not.Used_B(iLine))then
          nVertex_B(iLine) = 0
          MinLagr(iLine) = 1
          MaxLagr(iLine) = 1
          CYCLE line
       end if
-      
+
       call iblock_to_lon_lat(iLine, iLon, iLat)
       ! set the file name
       write(NameFile,'(a,i3.3,a,i3.3,a)') &
          trim(NameInputDir)//NameMHData//'_',iLonFile,&
          '_',iLatFile, '_'//trim(StringTag)//NameFileExtension
 
-      inquire(file=NameFile,exist=Used_B(iLine))
+      inquire(file=NameFile,exist=DoesFileExist)
+      Used_B(iLine) = DoesFileExist
 
       if(.not.Used_B(iLine))then
          write(*,'(a)')NameSub//': the file '//NameFile//' is not found!'
@@ -236,7 +240,7 @@ contains
 
       ! TimeToWait = 5   ! seconds
       ! TimeToQuit = 600 ! seconds
-      ! do 
+      ! do
       !    call read_plot_file(NameFile          ,&
       !       TypeFileIn = TypeMhDataFile      ,&
       !       TimeOut    = DataInputTime       ,&
@@ -244,10 +248,10 @@ contains
       !       ParamOut_I = Param_I(LagrID_:StartJulian_), &
       !       iErrorOut = ioError)
 
-      !    if(ioError.ne.0) then
+      !    if(ioError /= 0) then
       !       SleepCounter = SleepCounter + TimeToWait
       !       call sleep(TimeToWait)
-      !       if(SleepCounter.gt.TimeToQuit.and.iProc.eq.0) &
+      !       if(SleepCounter > TimeToQuit.and.iProc == 0) &
       !          call CON_Stop(NameSub//': read_plot_file could not read file for 600 seconds.')
       !       cycle
       !    else
@@ -281,24 +285,24 @@ contains
          1:nVertex_B(iLine),iLine)         ,&
          VarOut_VI  = MHData_VIB(1:nMHData ,&
          1:nVertex_B(iLine),iLine))
-         
+
       ! Shift data such that index == lagr coordinate
-      
+
       ! sometimes negative lagr coords appear
       ! ignoring those for now - consult igor
-   
+
       startIndex = 1
-      do while(MhData_VIB(LagrID_, startIndex, iLine).lt.1)
+      do while(MhData_VIB(LagrID_, startIndex, iLine) < 1)
          startIndex = startIndex + 1
       end do
-      
+
       MinLagr(iLine) = MhData_VIB(LagrID_, startIndex, iLine)
       MaxLagr(iLine) = MhData_VIB(LagrID_, nVertex_B(iLine), iLine)
       MHData_VIB(:, MinLagr(iLine):MaxLagr(iLine), iLine) = &
          MHData_VIB(:, startIndex:nVertex_B(iLine), iLine)
-      
+
       ! zero out lagr coord with no data
-      if(MinLagr(iLine).gt.1) &
+      if(MinLagr(iLine) > 1) &
          MHData_VIB(:, 1:MinLagr(iLine)-1, iLine) = 0.0
 
     end do line

@@ -12,11 +12,11 @@ module PT_ModGrid
    use ModUtilities, ONLY: norm2
 #endif
    use ModUtilities, ONLY: CON_stop
-   use PT_ModSize,   ONLY: nVertexMax, nDim
-   use PT_ModProc,   ONLY: iProc
-   use PT_ModConst,  ONLY: cTwoPi, cPi
-   use PT_ModConst,  ONLY: cMu, cRsun, cProtonMass
-   use PT_ModTime,   ONLY: PTTime, DataInputTime
+   use PT_ModSize, ONLY: nVertexMax, nDim
+   use PT_ModProc, ONLY: iProc
+   use PT_ModConst, ONLY: cTwoPi, cPi
+   use PT_ModConst, ONLY: cMu, cRsun, cProtonMass
+   use PT_ModTime, ONLY: PTTime, DataInputTime
    implicit none
    SAVE
 
@@ -57,7 +57,7 @@ module PT_ModGrid
    ! lines (blocks) on this processor. For iLine=1:nLine
    ! iLineAll = iLineAll0+1:iNodeLast
    integer, public :: nLine
-   
+
    ! Number of particles (vertexes, Lagrangian meshes) per line (line):
    integer, public, pointer :: nVertex_B(:), nVertex_BOld(:)
 
@@ -86,7 +86,7 @@ module PT_ModGrid
    integer, public, parameter :: & ! init length of segment 1-2:
          Length_ = 4               ! control appending  new particles
    real, public, pointer :: FootPoint_VB(:,:)
-   
+
    ! Logical to mark unusable lines
    logical, public, pointer :: Used_B(:)
 
@@ -95,7 +95,7 @@ module PT_ModGrid
    ! 2nd index - particle index along the field line
    ! 3rd index - local line number
    real, public, pointer     :: MhData_VIB(:,:,:)
-   
+
    ! Aux state vector;
    ! 1st index - identification of variable (D_:BOld_)
    ! 2nd index - particle index along the field line
@@ -131,7 +131,7 @@ module PT_ModGrid
          RhoOld_     =20, & ! Background plasma density      ! copy_
          UOld_       =21, & ! Background plasma bulk speed   ! old_
          BOld_       =22, & ! Magnitude of magnetic field    ! state
-         SOld_       =23, & 
+         SOld_       =23, &
          DOld_       =24, &
          dBOld_      =25, &
          ROld_       =26, &
@@ -171,13 +171,13 @@ module PT_ModGrid
    logical:: DoInit = .true.
 
 contains
-   !============================================================================
+  !============================================================================
    subroutine read_param(NameCommand)
       use ModReadParam, ONLY: read_var
       character(len=*), intent(in):: NameCommand ! From PARAM.in
       ! Misc
-      character(len=*), parameter:: NameSub = 'read_param'
-      !--------------------------------------------------------------------------
+    character(len=*), parameter:: NameSub = 'read_param'
+    !--------------------------------------------------------------------------
       select case(NameCommand)
       case('#COORDSYSTEM','#COORDINATESYSTEM')
          call read_var('TypeCoordSystem', TypeCoordSystem, &
@@ -192,18 +192,18 @@ contains
       end select
 
    end subroutine read_param
-   !============================================================================
+  !============================================================================
    subroutine init
 
       ! allocate the grid used in this model
-      use ModUtilities,      ONLY: check_allocate
-      use PT_ModProc,        ONLY: nProc
+      use ModUtilities, ONLY: check_allocate
+      use PT_ModProc, ONLY: nProc
 
       integer:: iError
       integer:: iNodeLast
 
-      character(len=*), parameter:: NameSub = 'init'
-      !--------------------------------------------------------------------------
+    character(len=*), parameter:: NameSub = 'init'
+    !--------------------------------------------------------------------------
       if(.not.DoInit)RETURN
       DoInit = .false.
 
@@ -237,13 +237,13 @@ contains
       iShock_IB = NoShock_
 
    end subroutine init
-   !============================================================================
+  !============================================================================
    subroutine init_stand_alone
       ! allocate the grid used in this model
-      use ModUtilities,      ONLY: check_allocate
+      use ModUtilities, ONLY: check_allocate
       integer :: iVertex, iError
-      character(len=*), parameter:: NameSub = 'init_stand_alone'
-      !--------------------------------------------------------------------------
+    character(len=*), parameter:: NameSub = 'init_stand_alone'
+    !--------------------------------------------------------------------------
       ! Allocate here if stand alone
       allocate(MhData_VIB(LagrID_:nMhData, 1:nVertexMax, nLine))
       MhData_VIB(1:nMhData,:,:) = 0.0
@@ -261,7 +261,7 @@ contains
       allocate(nVertex_BOld(nLine))
       nVertex_B = 0
       nVertex_BOld = 0
-      
+
       allocate(MinLagrOld(nLine))
       allocate(MaxLagrOld(nLine))
       allocate(MinLagr(nLine))
@@ -283,7 +283,7 @@ contains
       Used_B = .true.
 
    end subroutine init_stand_alone
-   !============================================================================
+  !============================================================================
    subroutine iblock_to_lon_lat(iBlockIn, iLonOut, iLatOut)
 
       ! return angular grid's indexes corresponding to this line
@@ -292,7 +292,7 @@ contains
       integer, intent(out):: iLatOut
 
       integer :: iLineAll
-      !--------------------------------------------------------------------------
+    !--------------------------------------------------------------------------
       !
       ! Get node number from line number
       !
@@ -301,23 +301,23 @@ contains
       iLonOut = iLineAll - nLon*(iLatOut - 1)
 
    end subroutine iblock_to_lon_lat
-   !============================================================================
+  !============================================================================
    subroutine copy_old_state
 
       ! copy current state to old state for all field lines
       integer:: i1, i2, iLine
-      !--------------------------------------------------------------------------
+    !--------------------------------------------------------------------------
       do iLine = 1, nLine
-         
+
          if(.not.Used_B(iLine))CYCLE
-         
+
          i1 = MinLagr(iLine)
          i2 = MaxLagr(iLine)
-         
+
          iShock_IB(ShockOld_, iLine) = iShock_IB(Shock_, iLine)
          iShock_IB(ShockDownOld_, iLine) = iShock_IB(ShockDown_, iLine)
          iShock_IB(ShockUpOld_, iLine)   = iShock_IB(ShockUp_, iLine)
-         
+
          State_VIB(RhoOld_, i1:i2, iLine) = MhData_VIB(Rho_, i1:i2, iLine)
          State_VIB(UOld_, i1:i2, iLine) = State_VIB(U_, i1:i2, iLine)
          State_VIB(BOld_, i1:i2, iLine) = State_VIB(B_, i1:i2, iLine)
@@ -326,7 +326,7 @@ contains
          State_VIB(dBOld_, i1:i2, iLine) = State_VIB(dB_, i1:i2, iLine)
          State_VIB(ROld_, i1:i2, iLine) = State_VIB(R_, i1:i2, iLine)
          State_VIB(TOld_, i1:i2, iLine) = MhData_VIB(T_, i1:i2, iLine)
-         
+
          nVertex_BOld(iLine) = nVertex_B(iLine)
          MinLagrOld(iLine) = MinLagr(iLine)
          MaxLagrOld(iLine) = MaxLagr(iLine)
@@ -337,19 +337,19 @@ contains
       end do
 
    end subroutine copy_old_state
-   !============================================================================
+  !============================================================================
    subroutine get_other_state_var
 
       integer:: iLine, iVertex
       integer:: iAux1, iAux2
       real   :: XyzAux1_D(x_:z_), XyzAux2_D(x_:z_)
-      character(len=*), parameter:: NameSub = 'get_other_state_var'
-      !--------------------------------------------------------------------------
+    character(len=*), parameter:: NameSub = 'get_other_state_var'
+    !--------------------------------------------------------------------------
       do iLine = 1, nLine
          if(.not.Used_B(iLine))CYCLE
 
          do iVertex = MinLagr(iLine), MaxLagr(iLine)
-            
+
             ! Heliocentric Distance
             State_VIB(R_, iVertex, iLine) = &
                norm2(MhData_VIB(X_:Z_, iVertex, iLine))
@@ -362,7 +362,7 @@ contains
             ! Velocity vector along fieldline
             State_VIB(U_,iVertex,iLine) = sum(MhData_VIB(Ux_:Uz_,iVertex,iLine) * &
                      MHData_VIB(Bx_:Bz_,iVertex,iLine)) / State_VIB(B_,iVertex,iLine)
-                     
+
             ! distance between lagrangian points
             if(iVertex /= MaxLagr(iLine))then
                State_VIB(D_, iVertex, iLine) = norm2(&
@@ -381,7 +381,7 @@ contains
 
          end do
          ! correction if lagr coord is added
-         if(MinLagrOld(iLine).gt.MinLagr(iLine)) then
+         if(MinLagrOld(iLine) > MinLagr(iLine)) then
                State_VIB(RhoOld_, MinLagr(iLine), iLine) = MhData_VIB(Rho_, MinLagr(iLine), iLine)
                State_VIB(UOld_, MinLagr(iLine), iLine) = State_VIB(U_, MinLagr(iLine), iLine)
                State_VIB(BOld_, MinLagr(iLine), iLine) = State_VIB(B_, MinLagr(iLine), iLine)
@@ -393,14 +393,15 @@ contains
       end do
 
    end subroutine get_other_state_var
-   !============================================================================
+  !============================================================================
    subroutine calc_density_gradient
      use, intrinsic:: ieee_arithmetic
      integer :: iLine, numLagr, iLagr, iAvg, iMin, iMax, count
      integer :: window = 50
      real :: sum
+    !--------------------------------------------------------------------------
       do iLine = 1, nLine
-         numLagr = MaxLagr(iLine) - MinLagr(iLine)
+         numLagr = MaxLagr(iLine) - MinLagr(iLine) + 1
 
          RGradient(1:numLagr, iLine) = State_VIB(R_, MinLagr(iLine):MaxLagr(iLine), iLine)
          DensityGradient(2:numLagr-1, iLine) = log(MhData_VIB(Rho_, 3:numLagr, iLine)) - &
@@ -413,7 +414,7 @@ contains
          where(ieee_is_nan(DensityGradient(:, iLine))) DensityGradient(:, iLine) = 0.0d0
          where(DensityGradient(:, iLine) > 1e3) DensityGradient(:, iLine) = 0.0d0
 
-         ! Smooth gradient         
+         ! Smooth gradient
          do iLagr = 1, numLagr
             iMin = max(1, iLagr - window)
             iMax = min(numLagr, iLagr + window)
@@ -431,22 +432,21 @@ contains
          end do
 
       end do
-      
 
    end subroutine calc_density_gradient
-   !============================================================================
+  !============================================================================
    subroutine check_line_ishock(iLine)
 
       ! check if the shock front is beyond the last coordinate of this field line
       ! in case that we accidentally have fewer particles on this field line
       integer, intent(in) :: iLine            ! index of line
-      !--------------------------------------------------------------------------
+    !--------------------------------------------------------------------------
       if(iShock_IB(Shock_, iLine) > MaxLagr(iLine)) then
          write(*,*) 'Shock in front of last coordinate', iShock_IB(Shock_, iLine), MaxLagr(iLine)
          Used_B(iLine) = .false.
       end if
    end subroutine check_line_ishock
-   !============================================================================
+  !============================================================================
    subroutine get_density_gradient(iLine, R, GradientInRho)
       integer, intent(in) :: iLine
       real, intent(in) :: R
@@ -455,6 +455,7 @@ contains
       integer :: Index
       real :: Rfrac
 
+    !--------------------------------------------------------------------------
       Index = minloc(R - RGradient(:, iLine), mask = (R - RGradient(:, iLine) > 0), dim = 1)
       Rfrac = (R - RGradient(Index, iLine)) / (RGradient(Index+1, iLine) - RGradient(Index, iLine))
 
@@ -462,5 +463,6 @@ contains
       GradientInRho = -GradientInRho
 
     end subroutine get_density_gradient
+  !============================================================================
 end module PT_ModGrid
 !==============================================================================
