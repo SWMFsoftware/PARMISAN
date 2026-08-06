@@ -15,8 +15,8 @@ MH_data.lst     NameTagFile
 GSM      TypeCoordSystem
 
 #FIELDLINEGRID
-1 nLon
-1 nLat
+1               nLat
+1               nLon
 
 #STOP
 2000        nIterMax

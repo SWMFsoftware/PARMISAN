@@ -3,7 +3,7 @@
 !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModTime
 
-  use ModKind,    ONLY: Real8_
+  use ModKind, ONLY: Real8_
   use ModUtilities, ONLY: CON_stop
 
   implicit none
@@ -12,6 +12,9 @@ module PT_ModTime
   ! Iteration and time in PT
   integer      :: iIter   = 0
   real         :: PTTime  = 0.0
+  ! MITTENS only supports time-accurate mode; the #TIMEACCURATE command
+  ! is accepted for SWMF PARAM.in compatibility and must be true
+  logical      :: DoTimeAccurate = .true.
   ! Time of the last data output
   real         :: DataInputTime = 0.0
   ! PTTime is the time in the PT model, DataInputTime is the time
@@ -80,6 +83,10 @@ contains
           call read_var('PTTime',PTTime)
           ! The last time input occurred the same time
           DataInputTime = PTTime
+       case('#TIMEACCURATE')
+          call read_var('DoTimeAccurate', DoTimeAccurate)
+          if(.not.DoTimeAccurate) call CON_stop( &
+               NameSub//': MITTENS only supports time-accurate mode')
        case("#STARTTIME", "#SETREALTIME")
           call read_var('iYear'  ,iStartTime_I(1))
           call read_var('iMonth' ,iStartTime_I(2))

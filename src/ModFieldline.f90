@@ -46,6 +46,19 @@ module PT_ModFieldline
 
     logical :: UseLogScaling  = .true.
 
+    ! Distance-aware adaptive timestep (#DISTANCETIMESTEP).
+    ! Far from the shock the Euler-Maruyama step is exact, so allow steps
+    ! whose diffusive displacement is at most sqrt(AlphaDist) of the distance
+    ! to the shock center or the line ends (1-cell floor at the center);
+    ! everywhere limit the per-step compression to AlphaDist e-folds.
+    ! MaxTimeStep (#SDE) remains the global hard cap: raise it when enabling.
+    ! One user knob feeds two internally separate factors so they can be
+    ! split later without redesign.
+    logical :: UseDistanceTimestep = .false.
+    real :: AlphaDist = 0.1
+    real :: AlphaRamp = 0.1  ! = AlphaDist: distance ramp
+    real :: EpsKick   = 0.1  ! = AlphaDist: compression-rate guard
+
 contains
   !============================================================================
     subroutine read_param_fieldline(NameCommand)
@@ -71,6 +84,14 @@ contains
             call read_var('BoundaryOuter', BoundaryOuter)
         case("#ADVECTION")
             call read_var("UseLogScaling", UseLogScaling)
+
+        case('#DISTANCETIMESTEP')
+            call read_var('UseDistanceTimestep', UseDistanceTimestep)
+            if(UseDistanceTimestep) then
+                call read_var('AlphaDist', AlphaDist)
+                AlphaRamp = AlphaDist
+                EpsKick   = AlphaDist
+            end if
 
         case default
             call CON_stop(NameSub//' Unknown command '//NameCommand)
@@ -358,6 +379,8 @@ contains
         real :: Bdown, DxxDown, dSdown
         real :: Rho1, RhoOld1, dLogRhodTau
         real :: TimestepDrift, TimestepShock
+        real :: DistNearest, VShockLagr
+        logical :: IsShockDetected
 
         integer :: iVertex
 
@@ -403,23 +426,69 @@ contains
         ! Maximum spatial step size is less than shockwidth
         ShockWidth = real(WidthUpNow + WidthDownNow)
 
-        if(ShockWidth == 0) ShockWidth = 1e9
+        ! ShockWidth = 0 means no shock zone is detected on this line
+        IsShockDetected = ShockWidth > 0.0
 
         ! DriftCoeff vanishes for uniform Dxx/(B*dS); the drift-limited
-        ! timesteps are then unbounded and must not be computed by division
+        ! timestep is then unbounded and must not be computed by division
         if(DriftCoeff(1) == 0.0) then
             TimestepDrift = sqrt(huge(Timestep))
-            TimestepShock = sqrt(huge(Timestep))
         else
             TimestepDrift = DiffCoeff(1)**2.0 / DriftCoeff(1)**2.0
-            TimestepShock = ShockWidth / abs(DriftCoeff(1))
         end if
 
-        if(abs(X_I(1) - real(iShockNow)) > ShockWidth) then
+        if(.not.IsShockDetected) then
+            ! no shock on this line: drift criterion only
             Timestep = TimestepDrift
-        else
+
+        else if(abs(X_I(1) - real(iShockNow)) <= ShockWidth) then
+            ! inside the detected shock zone: the step must also resolve
+            ! the zone-crossing scales
+            if(DriftCoeff(1) == 0.0) then
+                TimestepShock = sqrt(huge(Timestep))
+            else
+                TimestepShock = ShockWidth / abs(DriftCoeff(1))
+            end if
             Timestep = min(TimestepDrift, TimestepShock, &
                            ShockWidth**2.0 / DiffCoeff(1)**2.0)
+
+        else
+            ! shock detected, particle outside the zone
+            Timestep = TimestepDrift
+        end if
+
+        if(UseDistanceTimestep) then
+            ! Distance ramp, anchored at the shock CENTER: a step's
+            ! diffusive displacement may cover at most sqrt(AlphaRamp) of
+            ! the distance to the shock or to the line ends. The detected
+            ! zone width is deliberately NOT used as a scale here: for
+            ! smooth shocks it can exceed the true kick structure by an
+            ! order of magnitude. The 1-cell floor at the center gives the
+            ! empirically validated fine-step scale on the kick itself.
+            if(IsShockDetected) then
+                DistNearest = abs(X_I(1) - real(iShockNow))
+            else
+                DistNearest = sqrt(huge(Timestep))
+            end if
+            DistNearest = max(min(DistNearest, &
+                                  X_I(1) - real(MinLagr(iLine)), &
+                                  real(MaxLagr(iLine)) - X_I(1)), 1.0)
+            Timestep = min(Timestep, &
+                           AlphaRamp*DistNearest**2/DiffCoeff(1)**2)
+
+            ! Shock motion: no step may outlast half the time for the
+            ! front to close the remaining gap
+            if(IsShockDetected .and. iShock2 > iShock1) then
+                VShockLagr = real(iShock2 - iShock1) &
+                             / max(DataInputTime - PTTime, 1e-30)
+                Timestep = min(Timestep, DistNearest/(2.0*VShockLagr))
+            end if
+
+            ! Compression-rate guard: at most EpsKick e-folds of momentum
+            ! change per step, so the linearized kick tracks the
+            ! exponential
+            if(abs(dLogRhodTau) > 0.0) &
+                Timestep = min(Timestep, EpsKick/abs(dLogRhodTau))
         end if
 
     end subroutine get_sde_coeffs_euler
@@ -517,3 +586,4 @@ contains
     end subroutine check_boundary_conditions
   !============================================================================
 end module PT_ModFieldline!==============================================================================
+!==============================================================================
