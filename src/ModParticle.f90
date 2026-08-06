@@ -2,13 +2,13 @@
   !  portions used with permission
   !  For more information, see http://csem.engin.umich.edu/tools/swmf
 module PT_ModParticle
-   use PT_ModConst, only: cProtonRestEnergy, cProtonMass, cLightSpeed, &
+   use PT_ModConst, ONLY: cProtonRestEnergy, cProtonMass, cLightSpeed, &
                           cMu, cMeV, ckeV
    use PT_ModSize, ONLY: nDim
    use PT_ModTime, ONLY: PTTime
 
    use PT_ModSolver, ONLY: euler_sde
-   
+
    implicit none
    SAVE
 
@@ -17,7 +17,7 @@ module PT_ModParticle
    integer, allocatable :: nParticleOnLine(:)
 
    integer, parameter :: LagrCoord_    = 1,  &
-                         Momentum_     = 2,  & ! p^3 / 3                     
+                         Momentum_     = 2,  & ! p^3 / 3
                          Time_         = 3,  &
                          R_            = 4,  &
                          Weight_       = 5,  &
@@ -33,15 +33,15 @@ module PT_ModParticle
    logical :: UseSplit = .false.
 
 contains
-   !============================================================================
+  !============================================================================
    subroutine read_param(NameCommand)
 
       use ModReadParam, ONLY: read_var
       use ModUtilities, ONLY: CON_stop
 
       character(len=*), intent(in):: NameCommand ! From PARAM.in
-      character(len=*), parameter:: NameSub = 'read_param'
-      !--------------------------------------------------------------------------
+    character(len=*), parameter:: NameSub = 'read_param'
+    !--------------------------------------------------------------------------
       select case(NameCommand)
       case('#PARTICLE')
          call read_var('nInject', nInject)
@@ -53,20 +53,21 @@ contains
          ! Convert to joules
          SplitEnergyMax = SplitEnergyMax*cMeV
          SplitEnergyMin = SplitEnergyMin*cMeV
-         
+
       case default
          call CON_stop(NameSub//' Unknown command '//NameCommand)
       end select
 
    end subroutine read_param
-   !============================================================================
+  !============================================================================
    subroutine init
-      use PT_ModGrid, only: nLine
-      use PT_ModSize, only: nVertexMax
+      use PT_ModGrid, ONLY: nLine
+      use PT_ModSize, ONLY: nVertexMax
       integer :: MaxTotalParticles
 
+    !--------------------------------------------------------------------------
       MaxTotalParticles = nVertexMax*nInject
-      
+
       if(UseSplit) then
          MaxTotalParticles = MaxTotalParticles + MaxTotalParticles*nSplit
          allocate(Particle_IV(1:MaxTotalParticles, 1:nSplitVar))
@@ -77,21 +78,21 @@ contains
 
       allocate(nParticleOnLine(1:nLine))
       nParticleOnLine = 0
-     
+
    end subroutine init
-   !============================================================================
+  !============================================================================
    subroutine init_split_grid()
-      
+
       use PT_ModProc, ONLY: iProc
-      use PT_ModUnit, only: kinetic_energy_to_momentum
-      
+      use PT_ModUnit, ONLY: kinetic_energy_to_momentum
+
       character(len=*), parameter :: OutputDir = 'PT/IO2/'
       character(len=*), parameter :: SplitFile = 'split_energies.dat'
 
       real :: dLogEsplit
       ! Loop variable:
       integer :: iSplit
-      !--------------------------------------------------------------------------
+    !--------------------------------------------------------------------------
 
       if(.not.allocated(SplitEnergy_I)) allocate(SplitEnergy_I(1:nSplit+1))
       if(.not.allocated(SplitMomentum_I)) allocate(SplitMomentum_I(1:nSplit+1))
@@ -100,7 +101,7 @@ contains
 
       SplitMomentum_I(1) = &
          kinetic_energy_to_momentum(SplitEnergyMin)**3.0/3.0
-      
+
       dLogEsplit = log10(SplitEnergyMax/SplitEnergyMin)/real(nSplit)
 
       do iSplit = 2, nSplit+1
@@ -123,26 +124,27 @@ contains
       deallocate(SplitEnergy_I)
 
    end subroutine init_split_grid
-   !============================================================================
+  !============================================================================
    subroutine inject_particles(iLine, Time, LagrCoord)
-      use PT_ModFieldline, only: get_particle_location, calc_weight
-      use PT_ModDistribution, only: increase_total_weight, InjPcubed, InjEnergy
-      use PT_ModUnit, only: kinetic_energy_to_momentum
-      
+      use PT_ModFieldline, ONLY: get_particle_location, calc_weight
+      use PT_ModDistribution, ONLY: increase_total_weight, InjPcubed, InjEnergy
+      use PT_ModUnit, ONLY: kinetic_energy_to_momentum
+
       integer, intent(in) :: iLine
       real, intent(in) :: Time, LagrCoord
       integer :: i, iStart, iEnd
 
+    !--------------------------------------------------------------------------
       iStart = nParticleOnLine(iLine) + 1
       iEnd = nParticleOnLine(iLine) + nInject
 
       do i = iStart, iEnd
-         ! Set psuedo-particle initial time, radial distance, 
-         ! and lagrangian coord on fieldline   
+         ! Set psuedo-particle initial time, radial distance,
+         ! and lagrangian coord on fieldline
          Particle_IV(i, Time_) = Time
          Particle_IV(i, LagrCoord_) = LagrCoord
          call get_particle_location(Time, Particle_IV(i, LagrCoord_), Particle_IV(i, R_))
-         
+
          ! Set psuedo-particle energy/momentum
          Particle_IV(i, Momentum_) = InjPcubed
 
@@ -164,33 +166,34 @@ contains
 
          nParticleOnLine(iLine) = nParticleOnLine(iLine) + 1
       end do
-      
+
    end subroutine inject_particles
-   !============================================================================
+  !============================================================================
    subroutine check_split(iParticle, DoSplit)
 
-      use PT_ModUnit, only: momentum_to_kinetic_energy
+      use PT_ModUnit, ONLY: momentum_to_kinetic_energy
       integer, intent(in) :: iParticle
       logical, intent(out) :: DoSplit
 
       integer :: SplitLevel, ParentNumChildren
       real    :: Momentum
 
+    !--------------------------------------------------------------------------
       DoSplit = .false.
-      
+
       ! current energy threshold index of splitting
       SplitLevel = int(Particle_IV(iParticle, SplitLevel_))
-      
+
       ! if max split energy threshold has not yet been reached
       ! if particle crosses next energy threshold
       ! if particle has not yet split
       Momentum = Particle_IV(iParticle, Momentum_)
-      if(SplitLevel.le.nSplit & 
-         .and.Momentum.gt.SplitMomentum_I(SplitLevel) &
-         .and.Particle_IV(iParticle, HasSplit_).eq.0) DoSplit = .true.
+      if(SplitLevel <= nSplit &
+         .and.Momentum > SplitMomentum_I(SplitLevel) &
+         .and.Particle_IV(iParticle, HasSplit_) == 0) DoSplit = .true.
 
    end subroutine check_split
-   !============================================================================
+  !============================================================================
    subroutine split_particle(iParticle, iLine)
 
       ! index of particle being split, total number of current particles in simulation
@@ -199,8 +202,9 @@ contains
       integer :: SplitInd
 
       ! index of newly split particle
+    !--------------------------------------------------------------------------
       SplitInd = nParticleOnLine(iLine) + 1
-      
+
       ! increase split level of current particle
       Particle_IV(iParticle, SplitLevel_) = Particle_IV(iParticle, SplitLevel_) + 1
 
@@ -214,17 +218,17 @@ contains
       ! conserves total weight
       Particle_IV(SplitInd, Weight_) = Particle_IV(SplitInd, Weight_) * 0.5
       Particle_IV(iParticle, Weight_) = Particle_IV(iParticle, Weight_) * 0.5
-      
+
       ! Increase number of particles on fieldline
       nParticleOnLine(iLine) = nParticleOnLine(iLine) + 1
 
    end subroutine split_particle
-   !============================================================================
+  !============================================================================
    subroutine advance_particles(iLine, TimeLimit, BinTime)
 
-      use PT_ModDistribution, only: bin_particle, BinTimeWindow
-      use PT_ModFieldline,    only: check_boundary_conditions
-      use PT_ModUnit,         only: momentum_to_kinetic_energy
+      use PT_ModDistribution, ONLY: bin_particle, BinTimeWindow
+      use PT_ModFieldline, ONLY: check_boundary_conditions
+      use PT_ModUnit, ONLY: momentum_to_kinetic_energy
 
       integer, intent(in) :: iLine
       real, intent(in) :: TimeLimit, BinTime
@@ -234,13 +238,14 @@ contains
 
       ! Loop over particles on this line
       ! with particle splitting, new particles can be added - while loop needed
+    !--------------------------------------------------------------------------
       iParticle = 1
-      
-      PARTICLE: do while(iParticle.le.nParticleOnLine(iLine))
-      
-         ! particle time loop    
+
+      PARTICLE: do while(iParticle <= nParticleOnLine(iLine))
+
+         ! particle time loop
          ! adaptive timestepping
-         TIME: do while(Particle_IV(iParticle, Time_).lt.TimeLimit) 
+         TIME: do while(Particle_IV(iParticle, Time_) < TimeLimit)
             ! move particle one timestep
             call advance_particle(iParticle, TimeLimit, Timestep)
 
@@ -249,10 +254,10 @@ contains
                                            Particle_IV(iParticle, LagrCoord_), &
                                            Particle_IV(iParticle, R_),         &
                                            IsOutside)
-            
+
             ! bin particle in space/time/momentum at end of time step
             ! Particle weight is its initial weight multipled fraction of binning time spent in bin
-            if(Particle_IV(iParticle, Time_).ge.(BinTime-BinTimeWindow)) then
+            if(Particle_IV(iParticle, Time_) >= (BinTime-BinTimeWindow)) then
                call bin_particle(Particle_IV(iParticle, LagrCoord_), &
                                  Particle_IV(iParticle, Momentum_),    &
                                  Particle_IV(iParticle, Weight_) * Timestep / BinTimeWindow)
@@ -265,13 +270,13 @@ contains
 
                call remove_particle_from_sim(iParticle, iLine)
                iParticle = iParticle - 1
-               exit TIME
+               EXIT TIME
             else
                ! particle splitting:
                ! total weight is conserved
                if(UseSplit) then
                   call check_split(iParticle, DoSplit)
-                  if(DoSplit) then          
+                  if(DoSplit) then
                      call split_particle(iParticle, iLine)
                   end if
                end if
@@ -280,13 +285,13 @@ contains
          end do TIME ! particle time loop
          ! move to next particle
          iParticle = iParticle + 1
-      end do PARTICLE 
+      end do PARTICLE
 
    end subroutine advance_particles
-   !============================================================================
+  !============================================================================
    subroutine advance_particle(iParticle, tStepMax, Timestep)
-      use PT_ModFieldline, only : get_particle_location
-      use PT_ModUnit, only: momentum_to_kinetic_energy
+      use PT_ModFieldline, ONLY: get_particle_location
+      use PT_ModUnit, ONLY: momentum_to_kinetic_energy
       integer, intent(in) :: iParticle
       real, intent(in) :: tStepMax
       real, intent(out) :: Timestep
@@ -295,6 +300,7 @@ contains
       real :: XOld(nDim), XNew(nDim)
 
       ! Equation advances lagrcoord and p^3/3 not p
+    !--------------------------------------------------------------------------
       XOld(LagrCoord_) = Particle_IV(iParticle, LagrCoord_)
       XOld(Momentum_)  = Particle_IV(iParticle, Momentum_)
 
@@ -308,7 +314,7 @@ contains
 
       ! Update particle time
       Particle_IV(iParticle, Time_) = Particle_IV(iParticle, Time_) + Timestep
-      
+
       ! Update radial distance (R)
 
       call get_particle_location(Particle_IV(iParticle, Time_), &
@@ -316,12 +322,13 @@ contains
                                  Particle_IV(iParticle, R_))
 
    end subroutine advance_particle
-   !============================================================================
+  !============================================================================
    subroutine remove_particle_from_sim(iParticle, iLine)
       integer, intent(in) :: iParticle, iLine
       integer :: i
 
-      if(iParticle.lt.nParticleOnLine(iLine)) then
+    !--------------------------------------------------------------------------
+      if(iParticle < nParticleOnLine(iLine)) then
          ! Shift all particles down one index
          Particle_IV(iParticle:nParticleOnLine(iLine)-1, :) = &
             Particle_IV(iParticle+1:nParticleOnLine(iLine), :)
@@ -333,8 +340,9 @@ contains
       nParticleOnLine(iLine) = nParticleOnLine(iLine) - 1
 
    end subroutine remove_particle_from_sim
-   !============================================================================
+  !============================================================================
    subroutine get_random_initial_energy(Energy)
+      use PT_ModRandom, ONLY: get_random_uniform
       real, intent(out) :: Energy
       real :: RandUniform
       real :: Emin, Emax
@@ -345,16 +353,17 @@ contains
       ! at higher energies
 
       ! energy limits [keV]
+    !--------------------------------------------------------------------------
       Emin = 10.0
       Emax = 300.0
 
-      call random_number(RandUniform)
+      call get_random_uniform(RandUniform)
 
       Energy = (1.0 - RandUniform) * Emin**(-cThreeHalf) + &
                RandUniform * Emax**(-cThreeHalf)
       Energy = Energy**(-1.0/cThreeHalf) * ckeV
 
    end subroutine get_random_initial_energy
-   !=============================================================================
+  !============================================================================
    end module PT_ModParticle
-   !=============================================================================
+!==============================================================================

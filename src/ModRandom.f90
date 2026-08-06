@@ -1,22 +1,44 @@
 module PT_ModRandom
     use ModMpi
-    use ModKind
+    use ModKind, ONLY: Int8_
 
     implicit none
-    
+    save
+
     logical, public :: UseInputSeedFile
+
+    ! Portable pseudo-random number generator (xoshiro256+).
+    ! The Fortran intrinsic random_number is compiler-specific, so results
+    ! could not be reproduced across compilers/platforms. This generator
+    ! produces the identical stream everywhere for a given seed, and each
+    ! MPI rank gets a provably non-overlapping stream via the xoshiro jump
+    ! function (streams are separated by 2^128 draws).
+
+    ! Generator state of this rank
+    integer(Int8_) :: RngState_I(4) = 0
+
+    ! Mask for the low 32 bits
+    integer(Int8_), parameter :: cMask32 = int(z'FFFFFFFF', Int8_)
+
+    ! xoshiro256 jump polynomial, each constant built from two 32-bit
+    ! halves to avoid overflowing signed 64-bit BOZ conversions
+    integer(Int8_), parameter :: cJump_I(4) = [ &
+        ior(ishft(int(z'180EC6D3',Int8_),32), int(z'3CFD0ABA',Int8_)), &
+        ior(ishft(int(z'D5A61266',Int8_),32), int(z'F0C9392C',Int8_)), &
+        ior(ishft(int(z'A9582618',Int8_),32), int(z'E03FC9AA',Int8_)), &
+        ior(ishft(int(z'39ABDC45',Int8_),32), int(z'29B1661C',Int8_)) ]
+
 contains
+  !============================================================================
 
-
-    !============================================================================
     subroutine read_param(NameCommand)
 
         use ModReadParam, ONLY: read_var
         use ModUtilities, ONLY: CON_stop
 
         character(len=*), intent(in):: NameCommand ! From PARAM.in
-        character(len=*), parameter:: NameSub = 'read_param'
-        !--------------------------------------------------------------------------
+    character(len=*), parameter:: NameSub = 'read_param'
+    !--------------------------------------------------------------------------
         select case(NameCommand)
         case('#INPUTSEED')
             call read_var("UseInputSeedFile", UseInputSeedFile)
@@ -25,146 +47,279 @@ contains
             call CON_stop(NameSub//' Unknown command '//NameCommand)
         end select
     end subroutine read_param
-    !============================================================================
+  !============================================================================
     subroutine init
         ! Use input seed file or randomize PRNG seed
         ! Should be inside IsFirstSession?
+    !--------------------------------------------------------------------------
         if(UseInputSeedFile) then
             call read_seed_file()
         else
             call init_random_seed()
         end if
         call save_seed() ! saves seed to file
-        
+
     end subroutine init
-    !============================================================================
+  !============================================================================
     subroutine init_random_seed()
-        use PT_ModProc, ONLY: iProc, nProc
+        use PT_ModProc, ONLY: iProc, iComm, iError
         use ModUtilities, ONLY: CON_stop
 
-        integer, allocatable :: Seed_I(:)
-        integer :: nSeed, fileUnit, istat
-        character(len=*), parameter:: NameSub = 'init_random_seed'
+        integer :: MasterSeed_I(2) ! two default integers, MPI-portable
+        integer :: fileUnit, istat
+        integer(Int8_) :: MasterSeed
 
-        ! get size of seed (compiler-dependent)
-        call random_seed(size = nSeed)
-        allocate(Seed_I(nSeed))
-
-        ! use dev/urandom to set seed for each processor
-        open(newunit=fileUnit, file="/dev/urandom", access="stream", &
-             form="unformatted", action="read", status="old", iostat=istat)
-        if (istat == 0) then
-            read(fileUnit) Seed_I
-            close(fileUnit)
-            call random_seed(put = Seed_I)
-        else
-            call CON_stop(NameSub//' /dev/urandom not found')
+        ! rank 0 draws a master seed from /dev/urandom ...
+    character(len=*), parameter:: NameSub = 'init_random_seed'
+    !--------------------------------------------------------------------------
+        if(iProc == 0) then
+            open(newunit=fileUnit, file="/dev/urandom", access="stream", &
+                 form="unformatted", action="read", status="old", iostat=istat)
+            if (istat == 0) then
+                read(fileUnit) MasterSeed_I
+                close(fileUnit)
+            else
+                call CON_stop(NameSub//' /dev/urandom not found')
+            end if
         end if
 
+        ! ... and shares it, so all ranks start from the same master state
+        call MPI_Bcast(MasterSeed_I, 2, MPI_INTEGER, 0, iComm, iError)
+
+        MasterSeed = ior(ishft(int(MasterSeed_I(1), Int8_), 32), &
+                         iand(int(MasterSeed_I(2), Int8_), cMask32))
+
+        call init_state_of_rank(MasterSeed)
+
     end subroutine init_random_seed
-    !============================================================================
+  !============================================================================
+    subroutine init_state_of_rank(MasterSeed)
+        ! Set this rank's generator state from a shared master seed:
+        ! expand the seed into the master state, then jump iProc times so
+        ! each rank's stream is separated from all others by 2^128 draws
+        use PT_ModProc, ONLY: iProc
+
+        integer(Int8_), intent(in) :: MasterSeed
+
+        integer(Int8_) :: x
+        integer :: i, iJump
+        real :: Dummy
+
+    !--------------------------------------------------------------------------
+        x = MasterSeed
+        ! the xorshift64 scrambler below requires a nonzero start
+        if(x == 0) x = ior(ishft(int(z'9E3779B9',Int8_),32), &
+                           int(z'7F4A7C15',Int8_))
+
+        ! expand one 64-bit seed into the four state words with xorshift64
+        ! (xor/shift only: cannot overflow, never yields zero from nonzero)
+        do i = 1, 4
+            x = ieor(x, ishft(x, 13))
+            x = ieor(x, ishft(x, -7))
+            x = ieor(x, ishft(x, 17))
+            RngState_I(i) = x
+        end do
+
+        ! warm-up: decorrelate from the low-entropy initial state
+        do i = 1, 32
+            Dummy = uniform_rand()
+        end do
+
+        ! separate this rank's stream from all lower ranks
+        do iJump = 1, iProc
+            call jump_stream
+        end do
+
+    end subroutine init_state_of_rank
+  !============================================================================
     subroutine read_seed_file()
-        ! reads in seed file to set the PRNG seed for each processor
-        use PT_ModProc, ONLY: iProc, nProc
+        ! Set the PRNG state for each processor from file seed.in.
+        ! Two formats are accepted:
+        ! (1) a single line with one integer: the master seed; every rank
+        !     derives its own stream from it (used for frozen-seed tests)
+        ! (2) one line per rank with 5 integers, as written by save_seed:
+        !     iProc State1 State2 State3 State4   (used to continue a run)
+        use PT_ModProc, ONLY: iProc
 
-        integer, allocatable :: Seed_I(:)
-        integer :: nSeed, io
+        integer(Int8_) :: Seed_I(5), MasterSeed
+        integer :: io
+        logical :: IsPerRankFile
 
-        ! get size of seed array - compiler-dependent- 
-        call random_seed(size = nSeed)
-        ! first value in data file is processor id, then seed array of size n
-        allocate(Seed_I(nSeed+1))
+    !--------------------------------------------------------------------------
+        IsPerRankFile = .false.
 
-        ! open input file
+        ! try the per-rank format first
         open(8, file = 'seed.in', action = 'read')
-
         do
-            ! read line of seed file
             read(8, *, iostat = io) Seed_I(:)
-            ! if processor IDs match, set the PRNG seed
+            if(io /= 0) EXIT
+            IsPerRankFile = .true.
             if (iProc == Seed_I(1)) then
                 close(8)
-                ! initialize seed
-                call random_seed(put = Seed_I(2:nSeed+1))
-                exit
-            end if
-            ! if no line matches, throw an error to screen 
-            ! seed is set randomly
-            ! need better way of making this error clear?
-            if(io.ne.0) then
-                close(8)
-                write(*,*) 'Error in reading seed file for iProc: ', iProc, ' Setting random seed.'
-                call init_random_seed
-                exit           
+                RngState_I = Seed_I(2:5)
+                RETURN
             end if
         end do
 
+        if(IsPerRankFile) then
+            ! per-rank file without a line for this rank
+            close(8)
+            write(*,*) 'Error in reading seed file for iProc: ', iProc, &
+                ' Setting random seed.'
+            call init_random_seed
+            RETURN
+        end if
+
+        ! master-seed format: one integer for all ranks
+        rewind(8)
+        read(8, *, iostat = io) MasterSeed
+        close(8)
+        if(io == 0) then
+            call init_state_of_rank(MasterSeed)
+        else
+            write(*,*) 'Error in reading seed file for iProc: ', iProc, &
+                ' Setting random seed.'
+            call init_random_seed
+        end if
+
     end subroutine read_seed_file
-    !============================================================================
+  !============================================================================
     subroutine save_seed()
 
         use PT_ModProc, ONLY: iProc, nProc, iComm, iError
 
-        integer :: nSeed, i
-        integer, allocatable :: Seed_I(:)
-        integer, allocatable :: AllSeed_IP(:, :)
+        integer :: i
+        integer(Int8_) :: State_I(4)
+        ! the 64-bit state is gathered as pairs of default integers, since
+        ! the checked MPI interfaces only cover default integer kinds
+        integer :: SeedBuf_I(9)
+        integer, allocatable :: AllSeedBuf_IP(:, :)
 
-        ! get size of seed array - compiler-dependent
-        call random_seed(size=nSeed)
-
-        ! allocate seed array
-        allocate(Seed_I(1:nSeed+1))
-
-        ! first index is processor id, the rest is the seed
-        Seed_I(1) = iProc
-        call random_seed(get=Seed_I(2:nSeed+1))
+        ! first value is processor id, the rest is the generator state
+    !--------------------------------------------------------------------------
+        SeedBuf_I(1) = iProc
+        SeedBuf_I(2:9) = transfer(RngState_I, SeedBuf_I(2:9))
 
         ! create output array
-        allocate(AllSeed_IP(nSeed+1, nProc))
-        
-        ! combine all processor's seeds
-        call MPI_Gather(Seed_I, nSeed+1, MPI_INTEGER, AllSeed_IP, &
-                        nSeed+1, MPI_INTEGER, 0, iComm, iError)
-        
-        if(iProc.ne.0) return
+        allocate(AllSeedBuf_IP(9, nProc))
+
+        ! combine all processor's states
+        call MPI_Gather(SeedBuf_I, 9, MPI_INTEGER, AllSeedBuf_IP, &
+                        9, MPI_INTEGER, 0, iComm, iError)
+
+        if(iProc /= 0) RETURN
 
         ! write to file
         open(8, file = 'PT/IO2/seed.out', status='new', action='write')
         do i = 1, nProc
-            write(8, *) AllSeed_IP(:, i)
+            State_I = transfer(AllSeedBuf_IP(2:9, i), State_I)
+            write(8, *) AllSeedBuf_IP(1, i), State_I
         end do
         close(8)
 
     end subroutine save_seed
-    !============================================================================
+  !============================================================================
+    subroutine advance_state()
+        ! one xoshiro256 state transition
+        integer(Int8_) :: t
+    !--------------------------------------------------------------------------
+        t = ishft(RngState_I(2), 17)
+        RngState_I(3) = ieor(RngState_I(3), RngState_I(1))
+        RngState_I(4) = ieor(RngState_I(4), RngState_I(2))
+        RngState_I(2) = ieor(RngState_I(2), RngState_I(3))
+        RngState_I(1) = ieor(RngState_I(1), RngState_I(4))
+        RngState_I(3) = ieor(RngState_I(3), t)
+        RngState_I(4) = i8_rotl(RngState_I(4), 45)
+    end subroutine advance_state
+  !============================================================================
+    function uniform_rand() result(Rand)
+        ! xoshiro256+ : uniform random number in [0, 1)
+        real :: Rand
+        integer(Int8_) :: Output
+    !--------------------------------------------------------------------------
+        Output = i8_add(RngState_I(1), RngState_I(4))
+        call advance_state
+
+        ! top 53 bits -> uniform in [0,1)
+        Rand = real(ishft(Output, -11)) * 2.0**(-53)
+
+    end function uniform_rand
+  !============================================================================
+    subroutine jump_stream()
+        ! Advance the state by 2^128 draws (xoshiro256 jump function)
+        integer(Int8_) :: State_I(4)
+        integer :: i, iBit
+    !--------------------------------------------------------------------------
+        State_I = 0
+        do i = 1, 4
+            do iBit = 0, 63
+                if(btest(cJump_I(i), iBit)) &
+                    State_I = ieor(State_I, RngState_I)
+                call advance_state
+            end do
+        end do
+        RngState_I = State_I
+
+    end subroutine jump_stream
+  !============================================================================
+    function i8_add(a, b) result(c)
+        ! 64-bit wrap-around addition without signed overflow
+        ! (overflow is undefined in Fortran and trapped by some debug flags)
+        integer(Int8_), intent(in) :: a, b
+        integer(Int8_) :: c
+        integer(Int8_) :: cLo, cHi
+    !--------------------------------------------------------------------------
+        cLo = iand(a, cMask32) + iand(b, cMask32)
+        cHi = iand(ishft(a, -32) + ishft(b, -32) + ishft(cLo, -32), cMask32)
+        c = ior(ishft(cHi, 32), iand(cLo, cMask32))
+    end function i8_add
+  !============================================================================
+    function i8_rotl(x, k) result(c)
+        ! rotate the 64 bits of x left by k
+        integer(Int8_), intent(in) :: x
+        integer, intent(in) :: k
+        integer(Int8_) :: c
+    !--------------------------------------------------------------------------
+        c = ior(ishft(x, k), ishft(x, k - 64))
+    end function i8_rotl
+  !============================================================================
+    subroutine get_random_uniform(Rand)
+        ! returns uniform random number in [0, 1)
+        real, intent(out) :: Rand
+    !--------------------------------------------------------------------------
+        Rand = uniform_rand()
+    end subroutine get_random_uniform
+  !============================================================================
     subroutine get_random_normal(RandNormal1)
         use PT_ModConst, ONLY: cTwoPi
         ! returns random number sampled from normal distribution
         ! with mean = 0 and std = 1
 
-        ! Box-Muller transformation limits the random variable to rn < ~6 
+        ! Box-Muller transformation limits the random variable to rn < ~6
         ! physically limiting the size of the random diffusive process
 
         ! can output two random normals if needed
-        
+
         real, intent(out) :: RandNormal1 !, RandNormal2
         real :: RandUniform1, RandUniform2
 
         ! uniform random numbers over [0,1)
-        call random_number(RandUniform1)
-        call random_number(RandUniform2)
+    !--------------------------------------------------------------------------
+        RandUniform1 = uniform_rand()
+        RandUniform2 = uniform_rand()
 
         ! redistribute to (0, 1] to avoid 0
         RandUniform1 = 1.0 - RandUniform1
         RandUniform2 = 1.0 - RandUniform2
-        
+
         ! Box-Muller transformation
         ! two independent random variable with standard normal distribution
         ! only need one for 1-D version
-        
+
         RandNormal1 = sqrt(-2.0*log(RandUniform1))*cos(cTwoPi*RandUniform2)
         ! RandNormal2 = sqrt(-2*log(RandUniform1))*sin(cTwoPi*RandUniform2)
 
     end subroutine get_random_normal
-!================================================================================
+  !============================================================================
 end module PT_ModRandom
+!==============================================================================
