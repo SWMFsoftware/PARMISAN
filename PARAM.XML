@@ -340,7 +340,7 @@ T               UseDistanceTimestep
 
 Distance aware adaptive particle time step. When enabled, each particle's
 time step is additionally limited by (i) a distance ramp
-dt = AlphaDist*d^2/(2*KappaLagr), where d is the Lagrangian distance to
+dt = AlphaDist*d\^2/(2*KappaLagr), where d is the Lagrangian distance to
 the shock center or to either end of the line (floored at one cell), so
 that a single step's diffusive displacement never exceeds sqrt(AlphaDist)
 times the distance to the nearest structure; (ii) a shock motion guard
