@@ -241,6 +241,10 @@ contains
         call advance_state
 
         ! top 53 bits -> uniform in [0,1)
+        ! The LOW bits of the xoshiro256+ output have known linear
+        ! artifacts (the '+' scrambler is weak there); only the top bits
+        ! may be used. Never derive random integers with mod() on the raw
+        ! Output - always go through this uniform and scale.
         Rand = real(ishft(Output, -11)) * 2.0**(-53)
 
     end function uniform_rand
@@ -265,6 +269,12 @@ contains
     function i8_add(a, b) result(c)
         ! 64-bit wrap-around addition without signed overflow
         ! (overflow is undefined in Fortran and trapped by some debug flags)
+        ! WARNING: this split 32-bit emulation of unsigned arithmetic is
+        ! load-bearing, not a style choice. "Simplifying" it to a plain
+        ! a + b compiles everywhere but is non-standard on overflow: it
+        ! traps under NAG -C and may differ between compilers, silently
+        ! breaking cross-compiler bit reproducibility of every frozen-seed
+        ! reference. Do not refactor.
         integer(Int8_), intent(in) :: a, b
         integer(Int8_) :: c
         integer(Int8_) :: cLo, cHi

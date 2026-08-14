@@ -127,16 +127,26 @@ contains
           use PT_ModProc, only: iProc
 
           integer :: iLine
-          real    :: dLogRhoSum, dTauFactor
+          real    :: dLogRhoSum
 
-          ! Sum the total density jump across the shock and apply to two 
-          ! lagrangian coordinates
-          ! SDE solvers need a finite shock width and the 2/3 - 1/3 split is from 
-          ! the analytical shock structure. 
-          
-          ! Re-scale dLogRho such that the total density jump changes faster than 
-          ! the coupling time and is the time it takes the shock to cross two 
-          ! lagrangian coordinates: 2 * (DataInputTime - PTTime) / (iShock - iShockOld)
+          ! Sum the total density jump across the detected shock zone and
+          ! redeposit it on a 3-cell binomial stencil (1/4, 1/2, 1/4)
+          ! centered at the shock. SDE solvers need a finite SMOOTH shock:
+          ! the analytic width scan shows a 1-2 cell quasi-discontinuity
+          ! biases the DSA slope (-4.6 vs -4.0 at r=4) while a smooth
+          ! >= 3 cell profile recovers theory, and the finite-width
+          ! residual grows linearly with width - so 3 smooth cells,
+          ! never wider (Doc/shock_grid_resolution_notes.md).
+
+          ! NO rate rescaling: the zone sum is already the compression rate
+          ! performed per unit time (= Vshock*ln(r) per interval), and a cell
+          ! swept by the moving stencil accumulates Sum/Vshock = ln(r)
+          ! exactly - conservation requires depositing the sum unchanged.
+          ! The historical factor 0.5*(iShock-iShockOld) confused this rate
+          ! with an amount needing a crossing-time conversion, delivering
+          ! r_eff = r**(dShock/2): HALF the log-compression at dShock=1
+          ! (measured: slope -4.83 vs -3.93 on the same w10 data; cutoff
+          ! 6 MeV vs 100 MeV at t=1200s). See Doc/timestep_notes.md.
 
           do iLine = 1, nLine
 
@@ -144,14 +154,12 @@ contains
                ! If shock does not move - do not sharpen
                if(iShock_IB(Shock_, iLine).eq.iShock_IB(ShockOld_, iLine)) CYCLE
 
-               dTauFactor = 0.5 * (iShock_IB(Shock_, iLine) - iShock_IB(ShockOld_, iLine))
-               if(dTauFactor.eq.0.0) dTauFactor = 1.0
-
                dLogRhoSum = sum(dLogRho_II(iShock_IB(ShockDown_, iLine):iShock_IB(ShockUp_, iLine), iLine))
 
                dLogRho_II(iShock_IB(ShockDown_, iLine):iShock_IB(ShockUp_, iLine), iLine) = dLogRhoThreshold
-               dLogRho_II(iShock_IB(Shock_, iLine), iLine) = dLogRhoSum * 2.0 / 3.0 * dTauFactor
-               dLogRho_II(iShock_IB(Shock_, iLine) + 1, iLine) = dLogRhoSum / 3.0 * dTauFactor
+               dLogRho_II(iShock_IB(Shock_, iLine) - 1, iLine) = dLogRhoSum * 0.25
+               dLogRho_II(iShock_IB(Shock_, iLine),     iLine) = dLogRhoSum * 0.50
+               dLogRho_II(iShock_IB(Shock_, iLine) + 1, iLine) = dLogRhoSum * 0.25
 
           end do
 

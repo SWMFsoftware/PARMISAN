@@ -62,7 +62,7 @@ rundir:
 		cp ${DIR}/share/JobScripts/job.*${MACHINE}* ${RUNDIR}/; \
 		cp ${DIR}/share/JobScripts/*.${MACHINE}.pl ${RUNDIR}/; \
 		rm -f ${RUNDIR}/*_TMP_* ${DIR}/share/JobScripts/*_TMP_*; \
-		cp -f Param/PARAM.in.MFLAMPA ${RUNDIR}/PARAM.in; \
+		cp -f Param/PARAM.in.MITTENS ${RUNDIR}/PARAM.in; \
 		touch ${RUNDIR}/core; chmod 444 ${RUNDIR}/core; \
 		cd ${RUNDIR}; ln -s ${BINDIR}/${DEFAULT_EXE} .; \
 		cp ${PTDIR}/Param/seed.in seed.in ; \

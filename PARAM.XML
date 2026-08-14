@@ -378,7 +378,8 @@ F               UseConstantDiffusion
 
 Selects the spatial diffusion coefficient model. UpstreamDxxModel is one
 of: MHD (Dxx computed from the local MHD state and turbulence level), PSP
-(PSP calibrated radial parameterization, see Param/PSP_para.dat), or
+(the analytic PSP-calibrated radial parameterization of Chen et al.
+2024), or
 Analytical (constant mean free path Lambda0 in AU, read only for this
 model). CorrelationLength is the turbulence correlation length at 1 AU
 and ScalingFactor multiplies the resulting Dxx. If UseConstantDiffusion
