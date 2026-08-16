@@ -240,6 +240,21 @@ NameInputDir) containing the list of time tags, one file per time level.
 Reading is tag file driven: each iteration consumes the next tag. If the
 tag file is temporarily exhausted the code waits for it to be appended
 (real time mode) and aborts if no new tag appears within 10 minutes.
+NameTagFile is only used when UseAppendedRead is false in #APPENDMHDATA.
+</command>
+
+<command name="APPENDMHDATA" if="$_IsFirstSession">
+  <parameter name="UseAppendedRead" type="logical" default="F"/>
+
+#APPENDMHDATA
+T		UseAppendedRead
+
+If UseAppendedRead is true, the field line background is read from a
+single file with all time levels appended (MH_data_iLon_iLat.out, as
+written by MFLAMPA with UseAppendedWrite): each iteration reads the next
+appended block instead of consuming a tag from NameTagFile, and the run
+stops when the end of the file is reached. The default is false, i.e.
+tag file driven reading of one file per time level.
 </command>
 
 </commandgroup>

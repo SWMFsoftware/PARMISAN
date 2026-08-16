@@ -77,7 +77,7 @@ contains
          case('#COORDSYSTEM', '#COORDINATESYSTEM','#FIELDLINEGRID')
             if(i_session_read() /= 1) CYCLE
             call read_param_grid(NameCommand)
-         case('#READMHDATA','#MHDATA')
+         case('#READMHDATA','#MHDATA','#APPENDMHDATA')
             call read_param_mhdata(NameCommand)
          case('#SHOCK')
             call read_param_shock(NameCommand)

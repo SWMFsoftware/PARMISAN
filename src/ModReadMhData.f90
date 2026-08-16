@@ -26,17 +26,25 @@ module PT_ModReadMhData
   public:: finalize     ! Finalize module variables DoReadMhData
   ! If the folliwing logical is true, read MH_data from files
   logical, public :: DoReadMhData
+  ! If true, read all time levels from a single appended file per line
+  ! (set via #APPENDMHDATA); otherwise one file per time level, tag driven
+  logical, public :: UseAppendedRead = .false.
   ! the input directory
   character(len=100)         :: NameInputDir=""
-  ! the name with list of file tags
+  ! the name with list of file tags (used only when .not.UseAppendedRead)
   character(len=100)         :: NameTagFile=""
   ! the input file name base
+  character(len=*), parameter:: NameMHData = "MH_data"
   character(len=4)           :: NameFileExtension
   character(len=20)          :: TypeMhDataFile
 
-  ! IO unit for file with list of tags
+  ! IO unit for file with list of tags (non-appended read mode)
   integer :: iIOTag
   integer :: iLonFile, iLatFile
+
+  ! Per-line file units for appended read mode; all lines read the same
+  ! appended file independently, each unit keeping its own position
+  integer, allocatable :: iUnit_B(:)
 
 contains
   !============================================================================
@@ -79,22 +87,45 @@ contains
          ! call read_var('nFileRead', nFileRead)
          ! name of the file with the list of tags
          call read_var('NameTagFile', NameTagFile)
+      case('#APPENDMHDATA')
+         ! read all time levels from a single appended file per line
+         call read_var('UseAppendedRead', UseAppendedRead)
       end select
 
    end subroutine read_param
   !============================================================================
    subroutine init
       ! initialize by setting the time and interation index of input files
-      integer:: iTag
-      character(len=50):: StringAux
+      integer:: iLine
+      logical:: DoesFileExist
+      character(len=100):: NameFile
     character(len=*), parameter:: NameSub = 'init'
     !--------------------------------------------------------------------------
       if(.not.DoReadMhData) RETURN
 
-      ! open the file with the list of tags
-      iIOTag = io_unit_new()
-      call open_file(iUnitIn=iIOTag, &
-         file=trim(NameInputDir)//trim(NameTagFile), status='old')
+      if(UseAppendedRead) then
+         ! open one persistent file unit per field line; all lines read the
+         ! same appended file, each unit keeping its own position
+         write(NameFile,'(a,i3.3,a,i3.3,a)') &
+            trim(NameInputDir)//NameMHData//'_',iLonFile,&
+            '_',iLatFile, NameFileExtension
+         inquire(file=NameFile, exist=DoesFileExist)
+         if(.not.DoesFileExist) call CON_stop(NameSub// &
+            ': appended MH_data file '//trim(NameFile)//' not found')
+         allocate(iUnit_B(nLine))
+         iUnit_B = -1
+         do iLine = 1, nLine
+            if(.not.Used_B(iLine)) CYCLE
+            iUnit_B(iLine) = io_unit_new()
+            call open_file(iUnitIn=iUnit_B(iLine), &
+               file=NameFile, status='old', NameCaller=NameSub)
+         end do
+      else
+         ! open the file with the list of tags
+         iIOTag = io_unit_new()
+         call open_file(iUnitIn=iIOTag, &
+            file=trim(NameInputDir)//trim(NameTagFile), status='old')
+      end if
 
       ! read the first input file
       call read_mh_data(DoOffsetIn = .false.)
@@ -107,16 +138,26 @@ contains
   !============================================================================
   subroutine finalize
 
+    integer :: iLine
     ! close currently opened files
     !--------------------------------------------------------------------------
-    if(DoReadMhData) call close_file(iUnitIn=iIOTag)
+    if(.not.DoReadMhData) RETURN
+    if(UseAppendedRead) then
+       if(allocated(iUnit_B)) then
+          do iLine = 1, nLine
+             if(iUnit_B(iLine) >= 0) call close_file(iUnitIn=iUnit_B(iLine))
+          end do
+          deallocate(iUnit_B)
+       end if
+    else
+       call close_file(iUnitIn=iIOTag)
+    end if
   end subroutine finalize
   !============================================================================
   subroutine read_mh_data(DoOffsetIn)
 
    use PT_ModProc, ONLY: iProc
 
-   character(len=*), parameter :: NameMHData = "MH_data"
    logical, optional, intent(in ):: DoOffsetIn
 
    ! read 1D MH data, which are produced by MFLAMPA in
@@ -165,36 +206,38 @@ contains
       DoOffset = .true.
    end if
 
-   ! get the tag for files
-   ! read(iIOTag,'(a)') StringTag
+   if(.not.UseAppendedRead) then
+      ! get the tag for files
 
-   ! For Feb 2026 Artemis real-time demonstration
-   ! Continually check that .lst file is updated and wait until it is
-   ! Terminate if .lst is not updated after 2 minutes
-   TimeToWait = 1   ! seconds
-   TimeToQuit = 600 ! seconds
-   do
-      read(iIOtag, '(a)', iostat = ioStat) StringTag
-      ! sometimes the file returns empty string and the next read is successful
-      ! if the string is empty, the fieldline will be marked as unused
-      if(StringTag == '') read(iIOtag, '(a)', iostat = ioStat) StringTag
-      if(ioStat < 0) then
-         backspace(iIOTag)
-         SleepCounter = SleepCounter + TimeToWait
-         call sleep(real(TimeToWait))
-         if(SleepCounter > TimeToQuit.and.iProc == 0) &
-            call CON_Stop(NameSub//': .lst file not updated for 120 seconds.')
-         CYCLE
-      else if(ioStat > 0.and.iProc == 0) then
-         call CON_Stop(NameSub//': error reading .lst file.')
-      else
-         ! print *, 'Successful: ', StringTag
-         ! Reset sleep counter for next file read
-         SleepCounter = 0
-         EXIT
-      end if
+      ! For Feb 2026 Artemis real-time demonstration
+      ! Continually check that .lst file is updated and wait until it is
+      ! Terminate if .lst is not updated after 2 minutes
+      TimeToWait = 1   ! seconds
+      TimeToQuit = 600 ! seconds
+      do
+         read(iIOtag, '(a)', iostat = ioStat) StringTag
+         ! sometimes the file returns empty string and the next read is
+         ! successful; if the string is empty, the fieldline will be marked
+         ! as unused
+         if(StringTag == '') read(iIOtag, '(a)', iostat = ioStat) StringTag
+         if(ioStat < 0) then
+            backspace(iIOTag)
+            SleepCounter = SleepCounter + TimeToWait
+            call sleep(real(TimeToWait))
+            if(SleepCounter > TimeToQuit.and.iProc == 0) &
+               call CON_Stop(NameSub// &
+               ': .lst file not updated for 120 seconds.')
+            CYCLE
+         else if(ioStat > 0.and.iProc == 0) then
+            call CON_Stop(NameSub//': error reading .lst file.')
+         else
+            ! Reset sleep counter for next file read
+            SleepCounter = 0
+            EXIT
+         end if
 
-   end do
+      end do
+   end if
    ! ---------------------------------------------
 
    ! save the current data input time
@@ -210,29 +253,46 @@ contains
       end if
 
       call iblock_to_lon_lat(iLine, iLon, iLat)
-      ! set the file name
-      write(NameFile,'(a,i3.3,a,i3.3,a)') &
-         trim(NameInputDir)//NameMHData//'_',iLonFile,&
-         '_',iLatFile, '_'//trim(StringTag)//NameFileExtension
+      if(UseAppendedRead) then
+         ! set the file name (needed by read_plot_file even with iUnitIn)
+         write(NameFile,'(a,i3.3,a,i3.3,a)') &
+            trim(NameInputDir)//NameMHData//'_',iLonFile,&
+            '_',iLatFile, NameFileExtension
+         ! read the header of the next appended block first
+         call read_plot_file(NameFile        ,&
+            iUnitIn    = iUnit_B(iLine)      ,&
+            TypeFileIn = TypeMhDataFile      ,&
+            TimeOut    = DataInputTime       ,&
+            n1out      = nVertex_B(iLine)    ,&
+            ParamOut_I = Param_I(LagrID_:StartJulian_),&
+            iErrorOut  = ioError)
+         if(ioError /= 0) call CON_stop(NameSub// &
+            ': end of appended file reached; no more MH data')
+      else
+         ! set the file name
+         write(NameFile,'(a,i3.3,a,i3.3,a)') &
+            trim(NameInputDir)//NameMHData//'_',iLonFile,&
+            '_',iLatFile, '_'//trim(StringTag)//NameFileExtension
 
-      inquire(file=NameFile,exist=DoesFileExist)
-      Used_B(iLine) = DoesFileExist
+         inquire(file=NameFile,exist=DoesFileExist)
+         Used_B(iLine) = DoesFileExist
 
-      if(.not.Used_B(iLine))then
-         write(*,'(a)')NameSub//': the file '//NameFile//' is not found!'
-         write(*,'(a)')NameSub//': the line marked as unused'
-         nVertex_B(iLine) = 0
-         MinLagr(iLine) = 1
-         MaxLagr(iLine) = 1
-         CYCLE line
+         if(.not.Used_B(iLine))then
+            write(*,'(a)')NameSub//': the file '//NameFile//' is not found!'
+            write(*,'(a)')NameSub//': the line marked as unused'
+            nVertex_B(iLine) = 0
+            MinLagr(iLine) = 1
+            MaxLagr(iLine) = 1
+            CYCLE line
+         end if
+         ! read the header first
+
+         call read_plot_file(NameFile        ,&
+            TypeFileIn = TypeMhDataFile      ,&
+            TimeOut    = DataInputTime       ,&
+            n1out      = nVertex_B(iLine)    ,&
+            ParamOut_I = Param_I(LagrID_:StartJulian_))
       end if
-      ! read the header first
-
-      call read_plot_file(NameFile          ,&
-         TypeFileIn = TypeMhDataFile      ,&
-         TimeOut    = DataInputTime       ,&
-         n1out      = nVertex_B(iLine)    ,&
-         ParamOut_I = Param_I(LagrID_:StartJulian_))
 
       ! For Feb 2026 Artemis real-time demonstration
       ! Sometimes M-FLAMPA files take a long time to write (hardware issue?)
@@ -265,10 +325,17 @@ contains
       if(DoOffset)then
          ! check consistency: time counter MUST advance
          if(DataInputTimeOld >= DataInputTime)then
-            call CON_stop(NameSub//&
-               ': time counter didnt advance when reading mh data file '//&
-               'with tag '//trim(StringTag)//&
-               '; the tag may be repeated in '//trim(NameTagFile))
+            if(UseAppendedRead) then
+               ! in appended mode time not advancing means end of data
+               call CON_stop(NameSub//&
+                  ': time counter didnt advance in appended file; '//&
+                  'no more MH data')
+            else
+               call CON_stop(NameSub//&
+                  ': time counter didnt advance when reading mh data file '//&
+                  'with tag '//trim(StringTag)//&
+                  '; the tag may be repeated in '//trim(NameTagFile))
+            end if
          end if
          ! amount of the offset is determined from difference
          ! in LagrID_
@@ -279,12 +346,22 @@ contains
       ! Parameters
       FootPoint_VB(LagrID_:Z_,iLine) = Param_I(LagrID_:Z_)
       ! read MH data
-      call read_plot_file(NameFile           ,&
-         TypeFileIn = TypeMhDataFile       ,&
-         Coord1Out_I= MHData_VIB(LagrID_   ,&
-         1:nVertex_B(iLine),iLine)         ,&
-         VarOut_VI  = MHData_VIB(1:nMHData ,&
-         1:nVertex_B(iLine),iLine))
+      if(UseAppendedRead) then
+         call read_plot_file(NameFile        ,&
+            iUnitIn    = iUnit_B(iLine)      ,&
+            TypeFileIn = TypeMhDataFile      ,&
+            Coord1Out_I= MHData_VIB(LagrID_  ,&
+            1:nVertex_B(iLine),iLine)        ,&
+            VarOut_VI  = MHData_VIB(1:nMHData,&
+            1:nVertex_B(iLine),iLine))
+      else
+         call read_plot_file(NameFile        ,&
+            TypeFileIn = TypeMhDataFile      ,&
+            Coord1Out_I= MHData_VIB(LagrID_  ,&
+            1:nVertex_B(iLine),iLine)        ,&
+            VarOut_VI  = MHData_VIB(1:nMHData,&
+            1:nVertex_B(iLine),iLine))
+      end if
 
       ! Shift data such that index == lagr coordinate
 
