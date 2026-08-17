@@ -139,48 +139,74 @@ contains
         !     derives its own stream from it (used for frozen-seed tests)
         ! (2) one line per rank with 5 integers, as written by save_seed:
         !     iProc State1 State2 State3 State4   (used to continue a run)
-        use PT_ModProc, ONLY: iProc
+        use PT_ModProc, ONLY: iProc, nProc, iComm, iError
+        use ModUtilities, ONLY: CON_stop
 
-        integer(Int8_) :: Seed_I(5), MasterSeed
-        integer :: io
-        logical :: IsPerRankFile
-
+        ! one extra slot: a genuine save_seed record has exactly 5 values,
+        ! so a 6th value on the record means the file is not per-rank format
+        integer(Int8_) :: Seed_I(6), MasterSeed
+        ! state packed into default integers for MPI, as in save_seed
+        integer :: StateBuf_I(8), StateMin_I(8), StateMax_I(8)
+        integer :: io, nRecord
+        logical :: IsPerRankFile, IsFound
+        character(len=200) :: StringLine
+    character(len=*), parameter:: NameSub = 'read_seed_file'
     !--------------------------------------------------------------------------
         IsPerRankFile = .false.
+        IsFound = .false.
+        nRecord = 0
 
-        ! try the per-rank format first
+        ! try the per-rank format first: one record per rank
         open(8, file = 'seed.in', action = 'read')
         do
-            read(8, *, iostat = io) Seed_I(:)
+            read(8, '(a)', iostat = io) StringLine
+            if(io /= 0) EXIT
+            if(len_trim(StringLine) == 0) CYCLE
+            ! a record with fewer than 5 values is not per-rank format
+            read(StringLine, *, iostat = io) Seed_I(1:5)
             if(io /= 0) EXIT
             IsPerRankFile = .true.
-            if (iProc == Seed_I(1)) then
-                close(8)
+            nRecord = nRecord + 1
+            ! a record with more than 5 values is not written by save_seed
+            read(StringLine, *, iostat = io) Seed_I(1:6)
+            if(io == 0) call CON_stop(NameSub// &
+                ': seed.in record has more than 5 values; expected either'// &
+                ' one master seed integer or per-rank lines '// &
+                'iProc State1 State2 State3 State4 as written by save_seed')
+            if(.not.IsFound .and. iProc == Seed_I(1)) then
                 RngState_I = Seed_I(2:5)
-                RETURN
+                IsFound = .true.
             end if
         end do
+        close(8)
 
         if(IsPerRankFile) then
-            ! per-rank file without a line for this rank
-            close(8)
-            write(*,*) 'Error in reading seed file for iProc: ', iProc, &
-                ' Setting random seed.'
-            call init_random_seed
+            if(nRecord /= nProc .or. .not.IsFound) call CON_stop(NameSub// &
+                ': per-rank seed.in does not have exactly one record'// &
+                ' for each rank; regenerate it or use a single master seed')
+            if(all(RngState_I == 0)) call CON_stop(NameSub// &
+                ': seed.in gives an all-zero generator state')
+            ! ranks must have distinct streams: identical states across
+            ! ranks would make all ranks draw the same random sequence
+            StateBuf_I = transfer(RngState_I, StateBuf_I)
+            call MPI_Allreduce(StateBuf_I, StateMin_I, 8, MPI_INTEGER, &
+                MPI_MIN, iComm, iError)
+            call MPI_Allreduce(StateBuf_I, StateMax_I, 8, MPI_INTEGER, &
+                MPI_MAX, iComm, iError)
+            if(nProc > 1 .and. all(StateMin_I == StateMax_I)) &
+                call CON_stop(NameSub// &
+                ': all ranks got the identical state from seed.in;'// &
+                ' the file is stale or malformed')
             RETURN
         end if
 
         ! master-seed format: one integer for all ranks
-        rewind(8)
+        open(8, file = 'seed.in', action = 'read')
         read(8, *, iostat = io) MasterSeed
         close(8)
-        if(io == 0) then
-            call init_state_of_rank(MasterSeed)
-        else
-            write(*,*) 'Error in reading seed file for iProc: ', iProc, &
-                ' Setting random seed.'
-            call init_random_seed
-        end if
+        if(io /= 0) call CON_stop(NameSub// &
+            ': cannot read a master seed from seed.in')
+        call init_state_of_rank(MasterSeed)
 
     end subroutine read_seed_file
   !============================================================================

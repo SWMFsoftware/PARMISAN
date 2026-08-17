@@ -314,11 +314,17 @@ SplitEnergyMax, increasing high energy statistics.
 #INPUTSEED
 F               UseInputSeedFile
 
-If true, the pseudo random number generator seed of each processor is
-read from the file seed.in in the run directory (first column: processor
-rank, remaining columns: seed array; see Param/seed.in for an example),
-making runs reproducible. If false (default), seeds are drawn from
-/dev/urandom. In either case the seeds used are saved to PT/IO2/seed.out.
+If true, the pseudo random number generator state of each processor is
+set from the file seed.in in the run directory, making runs reproducible.
+Two formats are accepted: (1) a single integer, the master seed, from
+which every rank derives its own independent stream (Param/seed.in is an
+example; this is the form to use for frozen-seed runs and tests), or
+(2) one line per rank with 5 integers, "iProc State1 State2 State3 State4",
+exactly as written to PT/IO2/seed.out by a previous run (used to continue
+that run). A per-rank file must have exactly one record per rank; files
+in any other format, or giving all ranks the same state, stop the code.
+If false (default), seeds are drawn from /dev/urandom. In either case the
+states used are saved to PT/IO2/seed.out.
 </command>
 
 </commandgroup>
